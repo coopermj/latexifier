@@ -3,7 +3,6 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql://localhost/latexgen"
     api_keys: str = ""
     storage_path: str = "/data"
     environment: str = "production"

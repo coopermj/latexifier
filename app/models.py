@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field
-from typing import Literal
 from enum import Enum
 
 
@@ -67,4 +66,3 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     latex_available: bool
     version: str | None = None
-    database_available: bool = False

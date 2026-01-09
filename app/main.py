@@ -1,32 +1,16 @@
 import logging
-from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .models import HealthResponse
 from .compiler import check_latex_available
-from .database import init_db, close_db, is_db_available
 from .routes import compile, styles, fonts, packages
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Manage application lifecycle."""
-    # Startup - don't crash if DB fails
-    try:
-        await init_db()
-    except Exception as e:
-        logger.error(f"Database initialization failed: {e}")
-    yield
-    # Shutdown
-    await close_db()
-
 
 app = FastAPI(
     title="LaTeXGen",
@@ -48,8 +32,7 @@ Include your API key in the `X-API-Key` header.
 """,
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc",
-    lifespan=lifespan
+    redoc_url="/redoc"
 )
 
 # CORS for ChatGPT and other integrations
@@ -72,20 +55,11 @@ app.include_router(packages.router)
 async def health_check():
     """Check service health and LaTeX availability."""
     latex_ok, version = await check_latex_available()
-    db_ok = is_db_available()
-
-    # Service is OK if LaTeX works (core functionality)
-    # Database is optional for basic compile operations
-    if latex_ok:
-        status = "ok"
-    else:
-        status = "degraded"
 
     return HealthResponse(
-        status=status,
+        status="ok" if latex_ok else "degraded",
         latex_available=latex_ok,
-        version=version,
-        database_available=db_ok
+        version=version
     )
 
 

@@ -6,27 +6,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/latexgen
       - API_KEYS=dev-key-12345
       - STORAGE_PATH=/data
       - ENVIRONMENT=development
     volumes:
       - ./app:/app/app:ro
       - latex_data:/data
-    depends_on:
-      - db
-
-  db:
-    image: postgres:16-alpine
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=latexgen
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
 
 volumes:
   latex_data:
-  postgres_data:
