@@ -30,15 +30,7 @@ router = APIRouter(prefix="/compile", tags=["compile"])
         500: {"description": "Compilation failed"}
     },
     summary="Compile LaTeX to PDF",
-    description="""
-Compile LaTeX source to PDF. Accepts three input formats:
-
-1. **Single file**: Provide `content` with base64-encoded .tex file
-2. **Multiple files**: Provide `files` array with name/content pairs
-3. **ZIP archive**: Provide `zip` with base64-encoded .zip file
-
-Set `output_format` to 'pdf' for raw PDF bytes or 'base64' for JSON response.
-"""
+    description="Compile LaTeX to PDF. Provide ONE of: content (base64 .tex), files (array), or zip (base64 archive). Set output_format to pdf or base64."
 )
 async def compile_document(request: CompileRequest):
     # Validate input - exactly one source must be provided
