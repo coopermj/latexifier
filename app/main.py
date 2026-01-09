@@ -1,10 +1,13 @@
 import logging
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from .config import get_settings
 from .models import HealthResponse
 from .compiler import check_latex_available
+from .storage import get_pdf, cleanup_expired_pdfs
 from .routes import compile, styles, fonts, packages
 
 logging.basicConfig(level=logging.INFO)
@@ -70,3 +73,33 @@ async def health_check():
 async def root():
     """Redirect to docs."""
     return {"message": "LaTeXGen API", "docs": "/docs"}
+
+
+@app.get("/download/{pdf_id}", tags=["utility"], summary="Download a compiled PDF")
+async def download_pdf(pdf_id: str):
+    """
+    Download a previously compiled PDF by its ID.
+    PDFs are stored for 7 days after compilation.
+    """
+    result = get_pdf(pdf_id)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="PDF not found or expired. PDFs are deleted after 7 days."
+        )
+
+    pdf_path, filename = result
+    return FileResponse(
+        path=pdf_path,
+        media_type="application/pdf",
+        filename=filename,
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@app.on_event("startup")
+async def startup_cleanup():
+    """Clean up expired PDFs on startup."""
+    removed = cleanup_expired_pdfs()
+    if removed > 0:
+        logger.info(f"Cleaned up {removed} expired PDF(s)")

@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from ..models import CompileRequest, CompileResponse, OutputFormat
 from ..compiler import compile_latex, CompilationError
+from ..storage import save_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +20,15 @@ router = APIRouter(prefix="/compile", tags=["compile"])
             "description": "Successful compilation",
             "content": {
                 "application/json": {
-                    "example": {
-                        "success": True,
-                        "pdf": "JVBERi0xLjQK...",
-                        "error": None,
-                        "log": "..."
+                    "examples": {
+                        "base64": {
+                            "summary": "Base64 output",
+                            "value": {"success": True, "pdf": "JVBERi0xLjQK...", "log": "..."}
+                        },
+                        "url": {
+                            "summary": "URL output",
+                            "value": {"success": True, "url": "https://latexifier-production.up.railway.app/download/abc-123", "log": "..."}
+                        }
                     }
                 },
                 "application/pdf": {}
@@ -33,7 +38,7 @@ router = APIRouter(prefix="/compile", tags=["compile"])
         500: {"description": "Compilation failed"}
     },
     summary="Compile LaTeX to PDF",
-    description="Compile LaTeX to PDF. Provide ONE of: content (base64 .tex), files (array), or zip (base64 archive). Set output_format to pdf or base64."
+    description="Compile LaTeX to PDF. Provide ONE of: content, files, or zip. Set output_format to pdf, base64, or url."
 )
 async def compile_document(request: CompileRequest):
     # Log incoming request for debugging
@@ -59,15 +64,32 @@ async def compile_document(request: CompileRequest):
     try:
         pdf_bytes, log = await compile_latex(request)
 
+        # Determine output filename
+        if request.content:
+            out_filename = request.filename.rsplit(".", 1)[0] + ".pdf"
+        else:
+            out_filename = request.main_file.rsplit(".", 1)[0] + ".pdf"
+
         if request.output_format == OutputFormat.PDF:
             return Response(
                 content=pdf_bytes,
                 media_type="application/pdf",
                 headers={
-                    "Content-Disposition": "attachment; filename=output.pdf"
+                    "Content-Disposition": f"attachment; filename={out_filename}"
                 }
             )
+        elif request.output_format == OutputFormat.URL:
+            # Store PDF and return download URL
+            pdf_id = await save_pdf(pdf_bytes, out_filename)
+            download_url = f"https://latexifier-production.up.railway.app/download/{pdf_id}"
+            logger.info(f"PDF stored with ID {pdf_id}")
+            return CompileResponse(
+                success=True,
+                url=download_url,
+                log=log
+            )
         else:
+            # BASE64 format
             pdf_base64 = base64.b64encode(pdf_bytes).decode()
             return CompileResponse(
                 success=True,
