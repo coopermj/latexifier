@@ -31,8 +31,8 @@ RUN mkdir -p /data/styles /data/fonts /data/temp
 ENV STORAGE_PATH=/data
 ENV PYTHONUNBUFFERED=1
 
-# Expose port
-EXPOSE 8000
+# Railway sets PORT env var
+ENV PORT=8000
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application (uses $PORT)
+CMD uvicorn app.main:app --host 0.0.0.0 --port $PORT
