@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 
 from .config import get_settings
-from .models import CompileRequest, FileItem
+from .models import CompileRequest, FileItem, TexEngine
 
 
 class CompilationError(Exception):
@@ -91,11 +91,14 @@ async def compile_latex(request: CompileRequest) -> tuple[bytes, str]:
             for font_file in fonts_dir.glob("*"):
                 shutil.copy(font_file, work_dir / font_file.name)
 
-        # Run pdflatex (twice for references)
+        # Select engine
+        engine = request.engine.value  # pdflatex, xelatex, or lualatex
+
+        # Run compiler (twice for references)
         log_output = ""
         for run in range(2):
             proc = await asyncio.create_subprocess_exec(
-                "pdflatex",
+                engine,
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 main_file,

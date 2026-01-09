@@ -7,6 +7,12 @@ class OutputFormat(str, Enum):
     BASE64 = "base64"
 
 
+class TexEngine(str, Enum):
+    PDFLATEX = "pdflatex"
+    XELATEX = "xelatex"
+    LUALATEX = "lualatex"
+
+
 class FileItem(BaseModel):
     name: str = Field(..., description="Filename including extension")
     content: str = Field(..., description="Base64-encoded file content")
@@ -40,6 +46,10 @@ class CompileRequest(BaseModel):
     output_format: OutputFormat = Field(
         OutputFormat.BASE64,
         description="Output format: 'pdf' for raw bytes, 'base64' for JSON"
+    )
+    engine: TexEngine = Field(
+        TexEngine.PDFLATEX,
+        description="TeX engine: 'pdflatex' (default), 'xelatex' (for fontspec/custom fonts), or 'lualatex'"
     )
 
 
