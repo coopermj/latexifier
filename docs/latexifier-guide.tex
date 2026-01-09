@@ -1,0 +1,759 @@
+\documentclass[11pt,letterpaper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{fontawesome5}
+\usepackage{amssymb}
+
+% Colors
+\definecolor{primary}{HTML}{2563EB}
+\definecolor{codebg}{HTML}{F3F4F6}
+\definecolor{codeframe}{HTML}{D1D5DB}
+\definecolor{success}{HTML}{059669}
+\definecolor{warning}{HTML}{D97706}
+
+% Hyperlinks
+\hypersetup{
+    colorlinks=true,
+    linkcolor=primary,
+    urlcolor=primary
+}
+
+% Code listings
+\lstset{
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    rulecolor=\color{codeframe},
+    breaklines=true,
+    breakatwhitespace=true,
+    postbreak=\mbox{\textcolor{red}{$\hookrightarrow$}\space},
+    showstringspaces=false,
+    tabsize=2,
+    xleftmargin=0.5em,
+    xrightmargin=0.5em,
+    aboveskip=1em,
+    belowskip=1em
+}
+
+% Define JSON language for listings
+\lstdefinelanguage{json}{
+    basicstyle=\ttfamily\small,
+    morestring=[b]",
+    literate=
+     *{:}{{{\color{primary}{:}}}}{1}
+      {,}{{{\color{primary}{,}}}}{1}
+      {\{}{{{\color{primary}{\{}}}}{1}
+      {\}}{{{\color{primary}{\}}}}}{1}
+      {[}{{{\color{primary}{[}}}}{1}
+      {]}{{{\color{primary}{]}}}}{1}
+}
+
+% Section formatting
+\titleformat{\section}{\Large\bfseries\color{primary}}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
+
+% Header/Footer
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textcolor{primary}{\textbf{Latexifier}}}
+\fancyhead[R]{\textcolor{gray}{API Documentation}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Custom boxes
+\newtcolorbox{infobox}{
+    colback=blue!5,
+    colframe=primary,
+    boxrule=0.5pt,
+    left=1em,
+    right=1em,
+    top=0.5em,
+    bottom=0.5em
+}
+
+\newtcolorbox{warningbox}{
+    colback=yellow!10,
+    colframe=warning,
+    boxrule=0.5pt,
+    left=1em,
+    right=1em,
+    top=0.5em,
+    bottom=0.5em
+}
+
+\begin{document}
+
+\begin{center}
+    {\Huge\bfseries\color{primary} Latexifier}\\[0.5em]
+    {\Large LaTeX-to-PDF Web Service}\\[1em]
+    {\large API Documentation \& Usage Guide}\\[0.5em]
+    {\color{gray}\today}
+\end{center}
+
+\vspace{2em}
+
+\begin{infobox}
+\textbf{Service URL:} \url{https://latexifier-production.up.railway.app}\\
+\textbf{Authentication:} API Key via \texttt{X-API-Key} header
+\end{infobox}
+
+\tableofcontents
+\newpage
+
+%==============================================================================
+\section{Overview}
+%==============================================================================
+
+Latexifier is a web service that compiles LaTeX documents to PDF. It supports:
+
+\begin{itemize}[leftmargin=2em]
+    \item \textbf{Multiple TeX engines:} pdflatex, xelatex, lualatex
+    \item \textbf{Flexible input:} Single files, multi-file projects, ZIP archives
+    \item \textbf{Custom assets:} Upload and persist fonts and style files
+    \item \textbf{Package management:} Install additional TeX packages on demand
+    \item \textbf{API-first design:} OpenAPI spec for easy integration
+\end{itemize}
+
+%==============================================================================
+\section{API Endpoints}
+%==============================================================================
+
+\begin{tabular}{|l|l|p{6cm}|}
+\hline
+\textbf{Method} & \textbf{Endpoint} & \textbf{Description} \\
+\hline
+POST & \texttt{/compile} & Compile LaTeX to PDF \\
+GET & \texttt{/health} & Health check and version info \\
+POST & \texttt{/styles} & Upload a style file (.sty, .cls) \\
+GET & \texttt{/styles} & List uploaded styles \\
+DELETE & \texttt{/styles/\{name\}} & Delete a style \\
+POST & \texttt{/fonts} & Upload a font file \\
+GET & \texttt{/fonts} & List uploaded fonts \\
+DELETE & \texttt{/fonts/\{name\}} & Delete a font \\
+POST & \texttt{/packages/install} & Install TeX packages \\
+GET & \texttt{/packages} & List installed packages \\
+GET & \texttt{/openapi.json} & OpenAPI specification \\
+\hline
+\end{tabular}
+
+%==============================================================================
+\section{Using curl}
+%==============================================================================
+
+\subsection{Health Check}
+
+\begin{lstlisting}[language=bash]
+curl https://latexifier-production.up.railway.app/health
+\end{lstlisting}
+
+\subsection{Single File Compilation}
+
+\begin{lstlisting}[language=bash]
+# Create a simple LaTeX file
+echo '\documentclass{article}
+\begin{document}
+Hello World!
+\end{document}' > doc.tex
+
+# Base64 encode and compile
+curl -X POST \
+  https://latexifier-production.up.railway.app/compile \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d "{
+    \"content\": \"$(base64 -i doc.tex)\",
+    \"filename\": \"doc.tex\",
+    \"output_format\": \"base64\"
+  }" | jq -r '.pdf' | base64 -d > output.pdf
+\end{lstlisting}
+
+\subsection{Multi-File Compilation}
+
+For documents with images or multiple source files:
+
+\begin{lstlisting}[language=bash]
+curl -X POST \
+  https://latexifier-production.up.railway.app/compile \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d "{
+    \"files\": [
+      {
+        \"name\": \"main.tex\",
+        \"content\": \"$(base64 -i main.tex)\"
+      },
+      {
+        \"name\": \"image.png\",
+        \"content\": \"$(base64 -i image.png)\"
+      }
+    ],
+    \"main_file\": \"main.tex\"
+  }"
+\end{lstlisting}
+
+\subsection{ZIP Archive Compilation}
+
+\begin{lstlisting}[language=bash]
+# Create a ZIP with your project
+zip -r project.zip main.tex images/ chapters/
+
+# Submit the ZIP
+curl -X POST \
+  https://latexifier-production.up.railway.app/compile \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d "{
+    \"zip\": \"$(base64 -i project.zip)\",
+    \"main_file\": \"main.tex\"
+  }"
+\end{lstlisting}
+
+%==============================================================================
+\section{Using Python}
+%==============================================================================
+
+\subsection{Basic Compilation}
+
+\begin{lstlisting}[language=python]
+import requests
+import base64
+
+API_URL = "https://latexifier-production.up.railway.app"
+API_KEY = "YOUR_API_KEY"
+
+# Read and encode LaTeX file
+with open("document.tex", "rb") as f:
+    content = base64.b64encode(f.read()).decode()
+
+# Compile
+response = requests.post(
+    f"{API_URL}/compile",
+    headers={"X-API-Key": API_KEY},
+    json={
+        "content": content,
+        "filename": "document.tex",
+        "output_format": "base64"
+    }
+)
+
+result = response.json()
+if result["success"]:
+    pdf_bytes = base64.b64decode(result["pdf"])
+    with open("output.pdf", "wb") as f:
+        f.write(pdf_bytes)
+    print("PDF saved to output.pdf")
+else:
+    print(f"Error: {result['error']}")
+    print(f"Log: {result['log']}")
+\end{lstlisting}
+
+\subsection{Multi-File with Images}
+
+\begin{lstlisting}[language=python]
+import requests
+import base64
+
+def encode_file(path):
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+response = requests.post(
+    f"{API_URL}/compile",
+    headers={"X-API-Key": API_KEY},
+    json={
+        "files": [
+            {"name": "main.tex", "content": encode_file("main.tex")},
+            {"name": "fig1.png", "content": encode_file("fig1.png")},
+            {"name": "fig2.pdf", "content": encode_file("fig2.pdf")}
+        ],
+        "main_file": "main.tex",
+        "engine": "pdflatex"
+    }
+)
+\end{lstlisting}
+
+\subsection{Using XeLaTeX for Custom Fonts}
+
+\begin{lstlisting}[language=python]
+response = requests.post(
+    f"{API_URL}/compile",
+    headers={"X-API-Key": API_KEY},
+    json={
+        "content": content,
+        "filename": "document.tex",
+        "engine": "xelatex"  # Required for fontspec
+    }
+)
+\end{lstlisting}
+
+%==============================================================================
+\section{TeX Engine Selection}
+%==============================================================================
+
+\begin{tabular}{|l|p{9cm}|}
+\hline
+\textbf{Engine} & \textbf{Use Case} \\
+\hline
+\texttt{pdflatex} & Default. Standard LaTeX with good compatibility. Fast compilation. \\
+\texttt{xelatex} & Custom fonts via \texttt{fontspec}, full Unicode support, simpler font setup. \\
+\texttt{lualatex} & Lua scripting, custom fonts, advanced typography, programmable documents. \\
+\hline
+\end{tabular}
+
+\vspace{1em}
+
+\begin{warningbox}
+\textbf{Note:} If using custom fonts with \texttt{fontspec}, you must use \texttt{xelatex} or \texttt{lualatex}. The \texttt{pdflatex} engine does not support \texttt{fontspec}.
+\end{warningbox}
+
+\subsection{When to Use Each Engine}
+
+\textbf{Use pdflatex when:}
+\begin{itemize}[leftmargin=2em]
+    \item You need maximum compatibility with older packages
+    \item Speed is critical (fastest compilation)
+    \item You don't need custom system fonts
+    \item Your document uses only ASCII or standard encodings
+\end{itemize}
+
+\textbf{Use xelatex when:}
+\begin{itemize}[leftmargin=2em]
+    \item You need custom TrueType/OpenType fonts
+    \item Your document contains Unicode characters (CJK, Arabic, etc.)
+    \item You want simple font setup without Lua complexity
+    \item You're migrating from pdflatex and need fontspec
+\end{itemize}
+
+\textbf{Use lualatex when:}
+\begin{itemize}[leftmargin=2em]
+    \item You need programmatic document generation with Lua scripts
+    \item You want advanced microtypography (\texttt{microtype} works better)
+    \item You need to manipulate the PDF directly
+    \item You're using packages that require Lua (e.g., \texttt{luacode}, \texttt{selnolig})
+    \item You need advanced font features like OpenType math fonts
+\end{itemize}
+
+\subsection{XeLaTeX vs LuaLaTeX Comparison}
+
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Feature} & \textbf{XeLaTeX} & \textbf{LuaLaTeX} \\
+\hline
+Custom fonts (fontspec) & \checkmark & \checkmark \\
+Unicode support & \checkmark & \checkmark \\
+Compilation speed & Faster & Slower \\
+Lua scripting & -- & \checkmark \\
+Microtype support & Limited & Full \\
+Direct PDF manipulation & -- & \checkmark \\
+OpenType math & \checkmark & \checkmark \\
+Memory for large docs & Limited & Better \\
+\hline
+\end{tabular}
+
+%==============================================================================
+\section{LuaLaTeX Deep Dive}
+%==============================================================================
+
+LuaLaTeX embeds the Lua programming language directly into the TeX engine, enabling powerful programmatic document generation.
+
+\subsection{Basic LuaLaTeX Document}
+
+\begin{lstlisting}[language=tex]
+\documentclass{article}
+\usepackage{fontspec}
+\usepackage{luacode}
+
+\setmainfont{TeX Gyre Termes}
+
+\begin{document}
+\section{Hello from LuaLaTeX}
+
+% Inline Lua
+The answer is \directlua{tex.print(6 * 7)}.
+
+\end{document}
+\end{lstlisting}
+
+\subsection{Using Lua for Dynamic Content}
+
+\begin{lstlisting}[language=tex]
+\documentclass{article}
+\usepackage{luacode}
+
+\begin{luacode*}
+function fibonacci(n)
+    if n <= 1 then return n end
+    return fibonacci(n-1) + fibonacci(n-2)
+end
+
+function printFibSequence(count)
+    local result = {}
+    for i = 0, count-1 do
+        table.insert(result, fibonacci(i))
+    end
+    tex.print(table.concat(result, ", "))
+end
+\end{luacode*}
+
+\newcommand{\fibsequence}[1]{\directlua{printFibSequence(#1)}}
+
+\begin{document}
+First 10 Fibonacci numbers: \fibsequence{10}
+\end{document}
+\end{lstlisting}
+
+\subsection{Reading External Data with Lua}
+
+\begin{lstlisting}[language=tex]
+\documentclass{article}
+\usepackage{luacode}
+
+\begin{luacode*}
+function processCSV(filename)
+    local file = io.open(filename, "r")
+    if not file then
+        tex.print("File not found")
+        return
+    end
+
+    tex.print("\\begin{tabular}{|l|l|}")
+    tex.print("\\hline")
+
+    for line in file:lines() do
+        local cols = {}
+        for col in line:gmatch("[^,]+") do
+            table.insert(cols, col)
+        end
+        tex.print(table.concat(cols, " & ") .. " \\\\")
+        tex.print("\\hline")
+    end
+
+    tex.print("\\end{tabular}")
+    file:close()
+end
+\end{luacode*}
+
+\newcommand{\csvtable}[1]{\directlua{processCSV("#1")}}
+
+\begin{document}
+\csvtable{data.csv}
+\end{document}
+\end{lstlisting}
+
+\subsection{Advanced Font Features with LuaLaTeX}
+
+\begin{lstlisting}[language=tex]
+\documentclass{article}
+\usepackage{fontspec}
+\usepackage{unicode-math}  % OpenType math fonts
+
+% Main text font
+\setmainfont{TeX Gyre Pagella}[
+    Numbers=OldStyle,
+    Ligatures=TeX
+]
+
+% Math font
+\setmathfont{TeX Gyre Pagella Math}
+
+% Monospace with specific features
+\setmonofont{Fira Code}[
+    Contextuals=Alternate,  % Programming ligatures
+    Scale=0.9
+]
+
+\begin{document}
+Math example: $\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}$
+
+Old-style figures: 0123456789
+
+Code: \texttt{=> != <= >=}
+\end{document}
+\end{lstlisting}
+
+\subsection{Using LuaLaTeX via the API}
+
+\begin{lstlisting}[language=python]
+import requests
+import base64
+
+API_URL = "https://latexifier-production.up.railway.app"
+API_KEY = "YOUR_API_KEY"
+
+lua_document = r'''
+\documentclass{article}
+\usepackage{luacode}
+
+\begin{luacode*}
+function greet(name)
+    tex.print("Hello, " .. name .. "!")
+end
+\end{luacode*}
+
+\newcommand{\greet}[1]{\directlua{greet("#1")}}
+
+\begin{document}
+\greet{World}
+
+Today's random number: \directlua{tex.print(math.random(1,100))}
+\end{document}
+'''
+
+content = base64.b64encode(lua_document.encode()).decode()
+
+response = requests.post(
+    f"{API_URL}/compile",
+    headers={"X-API-Key": API_KEY},
+    json={
+        "content": content,
+        "filename": "document.tex",
+        "engine": "lualatex",  # Must specify lualatex!
+        "output_format": "base64"
+    }
+)
+
+result = response.json()
+if result["success"]:
+    with open("output.pdf", "wb") as f:
+        f.write(base64.b64decode(result["pdf"]))
+\end{lstlisting}
+
+\subsection{LuaLaTeX-Specific Packages}
+
+\begin{tabular}{|l|p{8cm}|}
+\hline
+\textbf{Package} & \textbf{Purpose} \\
+\hline
+\texttt{luacode} & Clean Lua code blocks in LaTeX \\
+\texttt{luatexbase} & Base utilities for LuaTeX programming \\
+\texttt{unicode-math} & OpenType math font support \\
+\texttt{selnolig} & Intelligent ligature suppression \\
+\texttt{luaotfload} & OpenType font loading (auto-loaded by fontspec) \\
+\texttt{luamplib} & MetaPost graphics in LuaLaTeX \\
+\texttt{chickenize} & Fun text transformations (demonstrates Lua callbacks) \\
+\texttt{lua-visual-debug} & Visual debugging of boxes and glue \\
+\hline
+\end{tabular}
+
+\begin{infobox}
+\textbf{Performance Tip:} LuaLaTeX is slower than pdflatex and xelatex due to Lua overhead. For simple documents without Lua scripting, prefer xelatex for custom fonts.
+\end{infobox}
+
+%==============================================================================
+\section{Managing Fonts}
+%==============================================================================
+
+\subsection{Uploading Fonts}
+
+Fonts persist across deployments when stored on the Railway volume.
+
+\begin{lstlisting}[language=bash]
+# Upload a font
+curl -X POST \
+  https://latexifier-production.up.railway.app/fonts \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -F "file=@MyFont-Regular.ttf"
+\end{lstlisting}
+
+\subsection{Using Custom Fonts in LaTeX}
+
+\begin{lstlisting}[language=tex]
+\documentclass{article}
+\usepackage{fontspec}
+\setmainfont{MyFont-Regular.ttf}
+\begin{document}
+This text uses my custom font.
+\end{document}
+\end{lstlisting}
+
+\begin{warningbox}
+\textbf{Font Licensing:} Only upload fonts you have license to use on a server. Adobe Fonts and other subscription fonts typically prohibit server installation.
+\end{warningbox}
+
+\subsection{Free Font Alternatives}
+
+\begin{itemize}
+    \item \textbf{Google Fonts:} \url{https://fonts.google.com} (OFL license)
+    \item \textbf{Font Squirrel:} \url{https://fontsquirrel.com}
+    \item \textbf{The League of Moveable Type:} \url{https://theleagueofmoveabletype.com}
+\end{itemize}
+
+%==============================================================================
+\section{Managing Styles}
+%==============================================================================
+
+Upload custom \texttt{.sty} or \texttt{.cls} files:
+
+\begin{lstlisting}[language=bash]
+# Upload a style file
+curl -X POST \
+  https://latexifier-production.up.railway.app/styles \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -F "file=@mystyle.sty"
+
+# List styles
+curl https://latexifier-production.up.railway.app/styles \
+  -H "X-API-Key: YOUR_API_KEY"
+\end{lstlisting}
+
+%==============================================================================
+\section{Installing TeX Packages}
+%==============================================================================
+
+Install additional packages from CTAN:
+
+\begin{lstlisting}[language=bash]
+# Install a package
+curl -X POST \
+  https://latexifier-production.up.railway.app/packages/install \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"packages": ["tikz-cd", "minted"]}'
+
+# List installed packages
+curl https://latexifier-production.up.railway.app/packages \
+  -H "X-API-Key: YOUR_API_KEY"
+\end{lstlisting}
+
+\begin{infobox}
+\textbf{Note:} The service uses TeX Live Full, so most common packages are already installed.
+\end{infobox}
+
+%==============================================================================
+\section{ChatGPT GPT Action Setup}
+%==============================================================================
+
+\subsection{Step 1: Create a Custom GPT}
+
+In ChatGPT, go to \textbf{Explore GPTs} $\rightarrow$ \textbf{Create}.
+
+\subsection{Step 2: Add an Action}
+
+\begin{enumerate}
+    \item Go to \textbf{Configure} $\rightarrow$ \textbf{Actions} $\rightarrow$ \textbf{Create new action}
+    \item Click \textbf{Import from URL}
+    \item Enter: \texttt{https://latexifier-production.up.railway.app/openapi.json}
+\end{enumerate}
+
+\subsection{Step 3: Configure Authentication}
+
+\begin{itemize}
+    \item \textbf{Authentication Type:} API Key
+    \item \textbf{Auth Type:} Custom Header
+    \item \textbf{Header Name:} \texttt{X-API-Key}
+    \item \textbf{API Key:} Your API key
+\end{itemize}
+
+\subsection{Step 4: Add Instructions}
+
+Add to your GPT's instructions:
+
+\begin{lstlisting}
+When asked to create a LaTeX document:
+
+1. Generate the LaTeX source code
+2. Base64-encode the content
+3. Call the compile action with:
+   - content: base64-encoded LaTeX
+   - filename: "document.tex"
+   - engine: "pdflatex" (or "xelatex" for custom fonts)
+   - output_format: "base64"
+
+4. The response contains a base64-encoded PDF.
+
+For multi-file documents with images:
+- Use the "files" parameter with an array of
+  {name, content} objects
+- Set "main_file" to the primary .tex file
+\end{lstlisting}
+
+%==============================================================================
+\section{Error Handling}
+%==============================================================================
+
+\subsection{Response Format}
+
+All \texttt{/compile} responses include:
+
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "pdf": "base64-encoded-pdf...",
+  "error": null,
+  "log": "LaTeX compilation log..."
+}
+\end{lstlisting}
+
+On failure:
+
+\begin{lstlisting}[language=json]
+{
+  "success": false,
+  "pdf": null,
+  "error": "LaTeX compilation failed (run 1)",
+  "log": "! Undefined control sequence..."
+}
+\end{lstlisting}
+
+\subsection{Common Errors}
+
+\begin{tabular}{|l|p{8cm}|}
+\hline
+\textbf{Error} & \textbf{Solution} \\
+\hline
+Missing package & Install via \texttt{/packages/install} or add to ZIP \\
+Undefined control sequence & Check for typos or missing \texttt{\textbackslash usepackage} \\
+Font not found & Upload font via \texttt{/fonts} and use xelatex \\
+File not found & Ensure all referenced files are in the files array \\
+Timeout (120s) & Simplify document or split into parts \\
+\hline
+\end{tabular}
+
+%==============================================================================
+\section{Best Practices}
+%==============================================================================
+
+\begin{enumerate}
+    \item \textbf{Use pdflatex} unless you need custom fonts or Unicode
+    \item \textbf{Include all dependencies} in your files array or ZIP
+    \item \textbf{Check the log} on failures---it contains detailed error info
+    \item \textbf{Use relative paths} for images: \texttt{\textbackslash includegraphics\{image.png\}}
+    \item \textbf{Test locally first} before submitting to the API
+\end{enumerate}
+
+%==============================================================================
+\section{Quick Reference}
+%==============================================================================
+
+\begin{infobox}
+\textbf{Base URL:} \texttt{https://latexifier-production.up.railway.app}
+
+\textbf{Headers:}
+\begin{itemize}[leftmargin=1em,topsep=0pt]
+    \item \texttt{Content-Type: application/json}
+    \item \texttt{X-API-Key: YOUR\_API\_KEY}
+\end{itemize}
+
+\textbf{Compile Request Fields:}
+\begin{itemize}[leftmargin=1em,topsep=0pt]
+    \item \texttt{content} -- Base64 LaTeX (single file)
+    \item \texttt{files} -- Array of \{name, content\} (multi-file)
+    \item \texttt{zip} -- Base64 ZIP archive
+    \item \texttt{main\_file} -- Entry point (default: main.tex)
+    \item \texttt{engine} -- pdflatex, xelatex, lualatex
+    \item \texttt{output\_format} -- pdf, base64
+\end{itemize}
+\end{infobox}
+
+\vfill
+\begin{center}
+\textcolor{gray}{\small Generated by Latexifier $\bullet$ \url{https://latexifier-production.up.railway.app}}
+\end{center}
+
+\end{document}

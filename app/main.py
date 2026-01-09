@@ -32,7 +32,10 @@ Include your API key in the `X-API-Key` header.
 """,
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    servers=[
+        {"url": "https://latexifier-production.up.railway.app", "description": "Production server"}
+    ]
 )
 
 # CORS for ChatGPT and other integrations
