@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import Column, Integer, String, DateTime, Text
@@ -5,6 +7,8 @@ from datetime import datetime
 import uuid
 
 from .config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -54,6 +58,7 @@ class Job(Base):
 # Database engine and session
 _engine = None
 _session_factory = None
+_db_available = False
 
 
 def get_database_url() -> str:
@@ -67,27 +72,58 @@ def get_database_url() -> str:
     return url
 
 
-async def init_db():
+def is_db_configured() -> bool:
+    """Check if a real database URL is configured."""
+    settings = get_settings()
+    url = settings.database_url
+    # Skip if using default/placeholder URL
+    return url and "localhost" not in url and "example" not in url
+
+
+async def init_db(retries: int = 3, delay: float = 2.0):
     """Initialize database connection and create tables."""
-    global _engine, _session_factory
+    global _engine, _session_factory, _db_available
 
-    _engine = create_async_engine(get_database_url(), echo=False)
-    _session_factory = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
+    if not is_db_configured():
+        logger.warning("No database configured - running without persistence")
+        return
 
-    async with _engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    for attempt in range(retries):
+        try:
+            _engine = create_async_engine(get_database_url(), echo=False)
+            _session_factory = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
+
+            async with _engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+
+            _db_available = True
+            logger.info("Database connected successfully")
+            return
+
+        except Exception as e:
+            logger.warning(f"Database connection attempt {attempt + 1}/{retries} failed: {e}")
+            if attempt < retries - 1:
+                await asyncio.sleep(delay * (attempt + 1))
+
+    logger.error("Could not connect to database - running without persistence")
+
+
+def is_db_available() -> bool:
+    """Check if database is available."""
+    return _db_available
 
 
 async def get_session() -> AsyncSession:
     """Get database session."""
-    if _session_factory is None:
-        await init_db()
+    if not _db_available or _session_factory is None:
+        raise RuntimeError("Database not available")
     async with _session_factory() as session:
         yield session
 
 
 async def close_db():
     """Close database connection."""
-    global _engine
+    global _engine, _db_available
     if _engine:
         await _engine.dispose()
+        _db_available = False

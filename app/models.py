@@ -67,3 +67,4 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     latex_available: bool
     version: str | None = None
+    database_available: bool = False

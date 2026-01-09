@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,8 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
 from .models import HealthResponse
 from .compiler import check_latex_available
-from .database import init_db, close_db
+from .database import init_db, close_db, is_db_available
 from .routes import compile, styles, fonts, packages
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -14,8 +18,11 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
-    # Startup
-    await init_db()
+    # Startup - don't crash if DB fails
+    try:
+        await init_db()
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
     yield
     # Shutdown
     await close_db()
@@ -64,11 +71,21 @@ app.include_router(packages.router)
 @app.get("/health", response_model=HealthResponse, tags=["utility"])
 async def health_check():
     """Check service health and LaTeX availability."""
-    available, version = await check_latex_available()
+    latex_ok, version = await check_latex_available()
+    db_ok = is_db_available()
+
+    # Service is OK if LaTeX works (core functionality)
+    # Database is optional for basic compile operations
+    if latex_ok:
+        status = "ok"
+    else:
+        status = "degraded"
+
     return HealthResponse(
-        status="ok" if available else "degraded",
-        latex_available=available,
-        version=version
+        status=status,
+        latex_available=latex_ok,
+        version=version,
+        database_available=db_ok
     )
 
 

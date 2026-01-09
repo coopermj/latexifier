@@ -2,13 +2,11 @@ import hashlib
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import HTTPException, Security, Depends
+from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
-from .database import get_session, APIKey
+from .database import is_db_available
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -20,7 +18,6 @@ def hash_key(key: str) -> str:
 
 async def verify_api_key(
     api_key: Annotated[str | None, Security(api_key_header)],
-    session: AsyncSession = Depends(get_session)
 ) -> str | None:
     """
     Verify API key from header.
@@ -40,33 +37,40 @@ async def verify_api_key(
             detail="Missing API key. Include X-API-Key header."
         )
 
-    # Check against environment variable keys first (bootstrap keys)
+    # Check against environment variable keys (bootstrap keys)
     if api_key in settings.api_key_list:
         return api_key
 
-    # Check against database
-    key_hash = hash_key(api_key)
-    result = await session.execute(
-        select(APIKey).where(APIKey.key_hash == key_hash)
+    # If database is available, check there too
+    if is_db_available():
+        try:
+            from sqlalchemy import select, update
+            from .database import get_session, APIKey
+
+            async for session in get_session():
+                key_hash = hash_key(api_key)
+                result = await session.execute(
+                    select(APIKey).where(APIKey.key_hash == key_hash)
+                )
+                db_key = result.scalar_one_or_none()
+
+                if db_key:
+                    # Update last_used timestamp
+                    await session.execute(
+                        update(APIKey)
+                        .where(APIKey.id == db_key.id)
+                        .values(last_used=datetime.utcnow())
+                    )
+                    await session.commit()
+                    return api_key
+        except Exception:
+            pass  # Fall through to invalid key error
+
+    raise HTTPException(
+        status_code=401,
+        detail="Invalid API key."
     )
-    db_key = result.scalar_one_or_none()
-
-    if not db_key:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid API key."
-        )
-
-    # Update last_used timestamp
-    await session.execute(
-        update(APIKey)
-        .where(APIKey.id == db_key.id)
-        .values(last_used=datetime.utcnow())
-    )
-    await session.commit()
-
-    return api_key
 
 
 # Dependency for routes that require authentication
-RequireAPIKey = Annotated[str | None, Depends(verify_api_key)]
+RequireAPIKey = Annotated[str | None, Security(verify_api_key)]
