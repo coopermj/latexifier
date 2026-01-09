@@ -1,30 +1,25 @@
 # Use TeX Live as base for full LaTeX support
 FROM texlive/texlive:latest
 
-# Install Python 3.12 (has better wheel availability than 3.13)
+# Install pip for system Python
 RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y \
-    python3.12 \
-    python3.12-venv \
-    python3.12-dev \
+    python3-pip \
+    python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
 WORKDIR /app
 
-# Create virtual environment with Python 3.12
-RUN python3.12 -m venv /opt/venv
+# Create virtual environment
+RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Upgrade pip
-RUN pip install --upgrade pip
+RUN pip install --upgrade pip wheel
 
-# Install Python dependencies
+# Install Python dependencies (prefer binary wheels)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
 
 # Copy application code
 COPY app/ ./app/
