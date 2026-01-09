@@ -15,7 +15,7 @@ class TexEngine(str, Enum):
 
 class FileItem(BaseModel):
     name: str = Field(..., description="Filename including extension")
-    content: str = Field(..., description="Base64-encoded file content")
+    content: str = Field(..., description="File content: raw text or base64-encoded")
 
 
 class CompileRequest(BaseModel):
@@ -25,7 +25,7 @@ class CompileRequest(BaseModel):
     """
     content: str | None = Field(
         None,
-        description="Base64-encoded LaTeX content (for single file)"
+        description="LaTeX content: raw text or base64-encoded"
     )
     filename: str = Field(
         "document.tex",
@@ -33,7 +33,7 @@ class CompileRequest(BaseModel):
     )
     files: list[FileItem] | None = Field(
         None,
-        description="List of files with base64 content (for multi-file)"
+        description="List of files (content can be raw text or base64)"
     )
     zip: str | None = Field(
         None,

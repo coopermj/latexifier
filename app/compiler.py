@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import logging
 import os
 import shutil
 import tempfile
@@ -10,12 +11,38 @@ from pathlib import Path
 from .config import get_settings
 from .models import CompileRequest, FileItem, TexEngine
 
+logger = logging.getLogger(__name__)
+
 
 class CompilationError(Exception):
     def __init__(self, message: str, log: str = ""):
         self.message = message
         self.log = log
         super().__init__(message)
+
+
+def decode_content(content: str) -> bytes:
+    """
+    Decode content that may be base64-encoded or raw text.
+    Accepts both for easier ChatGPT integration.
+    """
+    # If it starts with common LaTeX commands, it's raw text
+    stripped = content.strip()
+    if stripped.startswith('\\') or stripped.startswith('%'):
+        logger.info("Detected raw LaTeX content")
+        return content.encode('utf-8')
+
+    # Try base64 decoding
+    try:
+        decoded = base64.b64decode(content)
+        # Verify it looks like text (LaTeX)
+        decoded_str = decoded.decode('utf-8')
+        logger.info("Decoded base64 content")
+        return decoded
+    except Exception:
+        # If base64 fails, treat as raw text
+        logger.info("Base64 decode failed, treating as raw text")
+        return content.encode('utf-8')
 
 
 async def check_latex_available() -> tuple[bool, str | None]:
@@ -48,21 +75,21 @@ async def compile_latex(request: CompileRequest) -> tuple[bytes, str]:
     try:
         # Set up files in work directory
         if request.content:
-            # Single file mode
-            tex_content = base64.b64decode(request.content)
+            # Single file mode - accepts raw LaTeX or base64
+            tex_content = decode_content(request.content)
             tex_file = work_dir / request.filename
             tex_file.write_bytes(tex_content)
             main_file = request.filename
         elif request.files:
-            # Multi-file mode
+            # Multi-file mode - accepts raw or base64 per file
             for file_item in request.files:
-                file_content = base64.b64decode(file_item.content)
+                file_content = decode_content(file_item.content)
                 file_path = work_dir / file_item.name
                 file_path.parent.mkdir(parents=True, exist_ok=True)
                 file_path.write_bytes(file_content)
             main_file = request.main_file
         elif request.zip:
-            # ZIP archive mode
+            # ZIP archive mode - must be base64 (binary data)
             zip_data = base64.b64decode(request.zip)
             zip_path = work_dir / "archive.zip"
             zip_path.write_bytes(zip_data)
