@@ -1,9 +1,12 @@
 import base64
+import logging
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import JSONResponse
 
 from ..models import CompileRequest, CompileResponse, OutputFormat
 from ..compiler import compile_latex, CompilationError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/compile", tags=["compile"])
 
@@ -33,6 +36,11 @@ router = APIRouter(prefix="/compile", tags=["compile"])
     description="Compile LaTeX to PDF. Provide ONE of: content (base64 .tex), files (array), or zip (base64 archive). Set output_format to pdf or base64."
 )
 async def compile_document(request: CompileRequest):
+    # Log incoming request for debugging
+    logger.info(f"Compile request: engine={request.engine}, output_format={request.output_format}, "
+                f"has_content={request.content is not None}, has_files={request.files is not None}, "
+                f"has_zip={request.zip is not None}, main_file={request.main_file}")
+
     # Validate input - exactly one source must be provided
     sources = [request.content, request.files, request.zip]
     provided = sum(1 for s in sources if s is not None)
@@ -68,11 +76,23 @@ async def compile_document(request: CompileRequest):
             )
 
     except CompilationError as e:
+        logger.error(f"Compilation failed: {e.message}")
+        logger.debug(f"Compilation log: {e.log[:500] if e.log else 'No log'}")
         return JSONResponse(
             status_code=500,
             content=CompileResponse(
                 success=False,
                 error=e.message,
                 log=e.log
+            ).model_dump()
+        )
+    except Exception as e:
+        logger.exception(f"Unexpected error during compilation: {e}")
+        return JSONResponse(
+            status_code=500,
+            content=CompileResponse(
+                success=False,
+                error=str(e),
+                log=None
             ).model_dump()
         )
