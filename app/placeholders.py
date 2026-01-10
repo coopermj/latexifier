@@ -2,6 +2,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Match
 
 from .scripture import (
     ScriptureLookupError,
@@ -45,7 +46,7 @@ def _parse_spec(raw_spec: str) -> PlaceholderSpec:
     version = ScriptureVersion.ESV
     options = {
         "headings": False,
-        "verses": False,
+        "verses": True,
         "footnotes": False,
         "copyright": True,
     }
@@ -93,6 +94,49 @@ def _parse_spec(raw_spec: str) -> PlaceholderSpec:
     )
 
 
+def _extract_chapter(reference: str) -> str | None:
+    """Best-effort extraction of a chapter number from a reference string."""
+    colon_match = re.search(r"(\d+)\s*:\s*\d+", reference)
+    if colon_match:
+        return colon_match.group(1)
+
+    numbers = re.findall(r"\b(\d+)\b", reference)
+    if not numbers:
+        return None
+
+    if len(numbers) == 1:
+        return numbers[0]
+
+    # If multiple numbers exist (e.g., "1 John 3:16"), the chapter is usually the penultimate number.
+    return numbers[-2]
+
+
+def _format_scripture_body(reference: str, text: str, include_verse_numbers: bool) -> str:
+    """
+    Convert plain text with verse numbers into scripture.sty macros.
+
+    - Adds \\ch{#} for the chapter at the start (best-effort from reference).
+    - Converts verse numbers at line starts into \\vs{#}.
+    """
+    clean = text.strip()
+
+    verse_pattern = re.compile(r"(^|\n)(\d+)\s+")
+
+    def verse_repl(match: Match[str]) -> str:
+        if include_verse_numbers:
+            return f"{match.group(1)}\\vs{{{match.group(2)}}} "
+        return match.group(1)
+
+    converted = verse_pattern.sub(verse_repl, clean)
+
+    if include_verse_numbers:
+        chapter = _extract_chapter(reference)
+        if chapter:
+            converted = f"\\ch{{{chapter}}} " + converted
+
+    return converted
+
+
 def _render_scripture(result_ref: str, version: ScriptureVersion, text: str) -> str:
     """
     Wrap fetched text in the scripture environment from the scripture package.
@@ -137,7 +181,7 @@ async def process_scripture_placeholders(work_dir: Path, main_file: str) -> None
     Replace scripture placeholders in all .tex files under work_dir.
 
     Placeholder syntax:
-      [[scripture:<reference>|<version>|headings=true|verses=false|footnotes=false|copyright=true]]
+      [[scripture:<reference>|<version>|headings=true|verses=true|footnotes=false|copyright=true]]
     Version defaults to ESV. Options are optional.
     """
     tex_files = list(work_dir.rglob("*.tex"))
@@ -172,7 +216,12 @@ async def process_scripture_placeholders(work_dir: Path, main_file: str) -> None
     for spec in placeholder_specs.values():
         try:
             result = await fetch_scripture(spec.reference, spec.version, spec.options)
-            rendered = _render_scripture(result.canonical or result.reference, spec.version, result.text)
+            formatted = _format_scripture_body(
+                result.canonical or result.reference,
+                result.text,
+                spec.options.include_verse_numbers,
+            )
+            rendered = _render_scripture(result.canonical or result.reference, spec.version, formatted)
             replacements[spec.raw] = rendered
         except ScriptureLookupError as exc:
             errors.append(f"{spec.reference} ({spec.version.value}): {exc}")

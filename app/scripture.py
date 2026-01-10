@@ -79,9 +79,9 @@ async def _fetch_esv(
 
     params = {
         "q": reference,
-        "include-passage-references": "true",
-        "include-verse-numbers": _bool_param(options.include_verse_numbers),
-        "include-first-verse-numbers": _bool_param(options.include_verse_numbers),
+        "include-passage-references": "false",
+        "include-verse-numbers": "true",
+        "include-first-verse-numbers": "true",
         "include-footnotes": _bool_param(options.include_footnotes),
         "include-footnote-body": _bool_param(options.include_footnotes),
         "include-headings": _bool_param(options.include_headings),
