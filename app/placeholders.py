@@ -118,9 +118,36 @@ def _format_scripture_body(reference: str, text: str, include_verse_numbers: boo
     - Adds \\ch{#} for the chapter at the start (best-effort from reference).
     - Converts verse numbers at line starts into \\vs{#}.
     """
-    clean = text.strip()
+    def strip_heading_and_footnotes(raw: str) -> str:
+        lines = raw.splitlines()
 
-    verse_pattern = re.compile(r"(^|\n)(\d+)\s+")
+        # Drop leading blanks
+        while lines and not lines[0].strip():
+            lines.pop(0)
+
+        # Drop heading (first non-empty line without digits)
+        if lines and not re.search(r"\d", lines[0]):
+            lines.pop(0)
+
+        # Drop blank lines after heading
+        while lines and not lines[0].strip():
+            lines.pop(0)
+
+        # Trim footnotes section
+        for idx, line in enumerate(lines):
+            if line.strip().lower() == "footnotes":
+                lines = lines[:idx]
+                break
+
+        # Drop trailing blanks
+        while lines and not lines[-1].strip():
+            lines.pop()
+
+        return "\n".join(lines)
+
+    clean = strip_heading_and_footnotes(text)
+
+    verse_pattern = re.compile(r"(^|\n)\s*\[?(\d+)\]?\s+")
 
     def verse_repl(match: Match[str]) -> str:
         if include_verse_numbers:
