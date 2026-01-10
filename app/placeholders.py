@@ -153,6 +153,9 @@ def _format_scripture_body(
         if not include_footnotes:
             cleaned = re.sub(r"\(\d+\)", "", cleaned)
 
+        # Remove trailing translation label like "(ESV)"
+        cleaned = re.sub(r"\s*\([A-Za-z]{2,}\)\s*$", "", cleaned)
+
         return cleaned
 
     clean = strip_heading_and_footnotes(text)
