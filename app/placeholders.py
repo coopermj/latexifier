@@ -13,7 +13,10 @@ from .scripture import (
 
 logger = logging.getLogger(__name__)
 
-PLACEHOLDER_PATTERN = re.compile(r"\[\[scripture:([^\]]+)\]\]", re.IGNORECASE)
+PLACEHOLDER_PATTERN = re.compile(
+    r"\[\[\s*scripture\s*:\s*([^\]]+?)\s*\]\]",
+    re.IGNORECASE
+)
 
 
 class ScripturePlaceholderError(Exception):
@@ -229,7 +232,7 @@ async def process_scripture_placeholders(work_dir: Path, main_file: str) -> None
         return
 
     placeholder_specs: dict[str, PlaceholderSpec] = {}
-    file_placeholders: dict[Path, set[str]] = {}
+    file_placeholders: dict[Path, list[tuple[str, str]]] = {}
 
     for tex_file in tex_files:
         try:
@@ -237,15 +240,19 @@ async def process_scripture_placeholders(work_dir: Path, main_file: str) -> None
         except UnicodeDecodeError:
             content = tex_file.read_text(errors="replace")
 
-        matches = PLACEHOLDER_PATTERN.findall(content)
+        matches = list(PLACEHOLDER_PATTERN.finditer(content))
         if not matches:
             continue
 
-        file_placeholders[tex_file] = set(matches)
-        for raw in matches:
-            raw_key = raw.strip()
-            if raw_key not in placeholder_specs:
-                placeholder_specs[raw_key] = _parse_spec(raw_key)
+        pairs: list[tuple[str, str]] = []
+        for m in matches:
+            placeholder_text = m.group(0)
+            spec_text = m.group(1).strip()
+            pairs.append((placeholder_text, spec_text))
+            if spec_text not in placeholder_specs:
+                placeholder_specs[spec_text] = _parse_spec(spec_text)
+
+        file_placeholders[tex_file] = pairs
 
     if not placeholder_specs:
         return
@@ -275,18 +282,17 @@ async def process_scripture_placeholders(work_dir: Path, main_file: str) -> None
             "Failed to fetch scripture for: " + "; ".join(errors)
         )
 
-    for tex_file, specs in file_placeholders.items():
+    for tex_file, pairs in file_placeholders.items():
         try:
             content = tex_file.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             content = tex_file.read_text(errors="replace")
 
-        for raw in specs:
-            placeholder = f"[[scripture:{raw}]]"
-            replacement = replacements.get(raw)
+        for placeholder_text, raw_key in pairs:
+            replacement = replacements.get(raw_key)
             if not replacement:
                 continue
-            content = content.replace(placeholder, replacement)
+            content = content.replace(placeholder_text, replacement)
 
         tex_file.write_text(content, encoding="utf-8")
 

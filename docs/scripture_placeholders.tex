@@ -1,0 +1,54 @@
+\documentclass{article}
+\usepackage{scripture}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage[margin=1in]{geometry}
+\title{Scripture Placeholder Usage}
+\author{LaTeXGen}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{Overview}
+LaTeXGen supports inline scripture placeholders that are resolved at compile time by calling the configured Scripture API (currently ESV). Each placeholder is replaced with content wrapped in the \texttt{scripture.sty} environment, using \texttt{\textbackslash ch\{\}} for chapters and \texttt{\textbackslash vs\{\}} for verses.
+
+\section*{Placeholder Syntax}
+\begin{lstlisting}[basicstyle=\ttfamily]
+[[ scripture:<reference> | <version> | headings=true | verses=true | footnotes=false | copyright=true ]]
+\end{lstlisting}
+
+\noindent Components:
+\begin{itemize}
+  \item \texttt{<reference>} (required): e.g., \texttt{John 3:16-18}
+  \item \texttt{<version>} (optional): defaults to \texttt{ESV}
+  \item Options (optional; defaults shown):
+  \begin{itemize}
+    \item \texttt{headings=false}
+    \item \texttt{verses=true} (enables \texttt{\textbackslash ch\{\}}/\texttt{\textbackslash vs\{\}})
+    \item \texttt{footnotes=false} (removes inline markers and the footnotes section)
+    \item \texttt{copyright=true}
+  \end{itemize}
+\end{itemize}
+
+\section*{Example}
+Source (note the spaces after \texttt{[[} to avoid accidental processing in this document):
+\begin{lstlisting}[basicstyle=\ttfamily]
+Here is a passage:
+
+[[ scripture:John 3:16 | ESV | verses=true ]]
+\end{lstlisting}
+
+Rendered (via placeholder replacement):
+\begin{scripture}[John 3:16][version=ESV]
+\ch{3} \vs{16} ``For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life.''
+\end{scripture}
+
+\section*{Notes}
+\begin{itemize}
+  \item The service automatically inserts \texttt{\textbackslash usepackage\{scripture\}} into the main \texttt{.tex} file when placeholders are present.
+  \item If a passage cannot be fetched, compilation fails with a descriptive error listing the references that failed.
+  \item Verse numbers and chapters are best-effort parsed from the reference and returned text.
+\end{itemize}
+
+\end{document}

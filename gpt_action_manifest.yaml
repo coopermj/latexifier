@@ -1,0 +1,153 @@
+openapi: 3.1.0
+info:
+  title: LaTeXGen API
+  version: '1.0'
+servers:
+  - url: https://latexifier-production.up.railway.app
+paths:
+  /compile:
+    post:
+      operationId: compileLaTeX
+      summary: Compile LaTeX to PDF
+      description: |
+        Compile LaTeX to PDF or return a download URL. All content must be base64-encoded
+        before sending. Scripture placeholders [[scripture:...]] are resolved server-side.
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  description: Base64-encoded single .tex file contents (required if no files/zip)
+                filename:
+                  type: string
+                  description: Filename for single file mode (e.g., document.tex)
+                files:
+                  type: array
+                  description: Multi-file mode; each item is base64-encoded content
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      content:
+                        type: string
+                zip:
+                  type: string
+                  description: Base64-encoded ZIP archive
+                main_file:
+                  type: string
+                  description: Main .tex file (for multi-file/zip)
+                  default: main.tex
+                output_format:
+                  type: string
+                  enum: [pdf, base64, url]
+                  default: url
+                engine:
+                  type: string
+                  enum: [pdflatex, xelatex, lualatex]
+                  default: pdflatex
+              oneOf:
+                - required: [content]
+                - required: [files]
+                - required: [zip]
+      responses:
+        '200':
+          description: Compilation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  pdf:
+                    type: string
+                    description: Base64 PDF (if output_format=base64)
+                  url:
+                    type: string
+                    description: Download URL (if output_format=url)
+                  error:
+                    type: string
+                  log:
+                    type: string
+        '400':
+          description: Invalid request
+        '500':
+          description: Compilation failed
+  /scripture:
+    get:
+      operationId: lookupScripture
+      summary: Lookup a scripture passage
+      security:
+        - apiKey: []
+      parameters:
+        - in: query
+          name: q
+          required: true
+          description: Passage reference, e.g., John 3:16-18
+          schema:
+            type: string
+        - in: query
+          name: version
+          description: Bible version
+          schema:
+            type: string
+            enum: [ESV]
+            default: ESV
+        - in: query
+          name: include_headings
+          schema:
+            type: boolean
+            default: false
+        - in: query
+          name: include_verse_numbers
+          schema:
+            type: boolean
+            default: false
+        - in: query
+          name: include_footnotes
+          schema:
+            type: boolean
+            default: false
+        - in: query
+          name: include_short_copyright
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Passage text
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reference:
+                    type: string
+                  canonical:
+                    type: string
+                  text:
+                    type: string
+                  version:
+                    type: string
+                  translation:
+                    type: string
+        '400':
+          description: Bad request
+        '404':
+          description: Passage not found
+        '503':
+          description: Upstream unavailable
+components:
+  schemas: {}
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
