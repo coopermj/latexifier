@@ -1,8 +1,10 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     api_keys: str = ""
     storage_path: str = "/data"
     environment: str = "production"
@@ -19,10 +21,6 @@ class Settings(BaseSettings):
         if not self.api_keys:
             return []
         return [k.strip() for k in self.api_keys.split(",") if k.strip()]
-
-    class Config:
-        env_file = ".env"
-
 
 @lru_cache
 def get_settings() -> Settings:

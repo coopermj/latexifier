@@ -1,4 +1,5 @@
 import logging
+import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Awaitable, Callable
@@ -66,12 +67,15 @@ async def _fetch_esv(
     options: ScriptureLookupOptions
 ) -> ScriptureLookupResult:
     settings = get_settings()
+    api_key = (settings.esv_api_key or os.getenv("ESV_API_KEY", "")).strip()
 
-    if not settings.esv_api_key:
+    if not api_key:
         raise ScriptureLookupError(
             "ESV API key is not configured. Set ESV_API_KEY.",
             status_code=503
         )
+
+    auth_header = api_key if api_key.startswith("Token ") else f"Token {api_key}"
 
     params = {
         "q": reference,
@@ -85,6 +89,7 @@ async def _fetch_esv(
     }
 
     headers = {"Authorization": f"Token {settings.esv_api_key}"}
+    headers = {"Authorization": auth_header}
 
     try:
         async with httpx.AsyncClient() as client:
