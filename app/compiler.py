@@ -10,6 +10,10 @@ from pathlib import Path
 
 from .config import get_settings
 from .models import CompileRequest, FileItem, TexEngine
+from .placeholders import (
+    ScripturePlaceholderError,
+    process_scripture_placeholders,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +121,12 @@ async def compile_latex(request: CompileRequest) -> tuple[bytes, str]:
         if fonts_dir.exists():
             for font_file in fonts_dir.glob("*"):
                 shutil.copy(font_file, work_dir / font_file.name)
+
+        # Replace scripture placeholders before compilation
+        try:
+            await process_scripture_placeholders(work_dir, main_file)
+        except ScripturePlaceholderError as exc:
+            raise CompilationError(str(exc))
 
         # Select engine
         engine = request.engine.value  # pdflatex, xelatex, or lualatex
