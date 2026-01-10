@@ -111,7 +111,12 @@ def _extract_chapter(reference: str) -> str | None:
     return numbers[-2]
 
 
-def _format_scripture_body(reference: str, text: str, include_verse_numbers: bool) -> str:
+def _format_scripture_body(
+    reference: str,
+    text: str,
+    include_verse_numbers: bool,
+    include_footnotes: bool,
+) -> str:
     """
     Convert plain text with verse numbers into scripture.sty macros.
 
@@ -143,7 +148,12 @@ def _format_scripture_body(reference: str, text: str, include_verse_numbers: boo
         while lines and not lines[-1].strip():
             lines.pop()
 
-        return "\n".join(lines)
+        cleaned = "\n".join(lines)
+
+        if not include_footnotes:
+            cleaned = re.sub(r"\(\d+\)", "", cleaned)
+
+        return cleaned
 
     clean = strip_heading_and_footnotes(text)
 
@@ -247,6 +257,7 @@ async def process_scripture_placeholders(work_dir: Path, main_file: str) -> None
                 result.canonical or result.reference,
                 result.text,
                 spec.options.include_verse_numbers,
+                spec.options.include_footnotes,
             )
             rendered = _render_scripture(result.canonical or result.reference, spec.version, formatted)
             replacements[spec.raw] = rendered
