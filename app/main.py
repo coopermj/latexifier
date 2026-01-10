@@ -8,7 +8,7 @@ from .config import get_settings
 from .models import HealthResponse
 from .compiler import check_latex_available
 from .storage import get_pdf, cleanup_expired_pdfs
-from .routes import compile, styles, fonts, packages
+from .routes import compile, styles, fonts, packages, scripture
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -55,6 +55,7 @@ app.include_router(compile.router)
 app.include_router(styles.router)
 app.include_router(fonts.router)
 app.include_router(packages.router)
+app.include_router(scripture.router)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["utility"])

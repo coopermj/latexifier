@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     environment: str = "production"
     max_file_size: int = 10 * 1024 * 1024  # 10MB
     max_zip_size: int = 50 * 1024 * 1024  # 50MB
+    esv_api_key: str = ""
 
     @property
     def is_development(self) -> bool:

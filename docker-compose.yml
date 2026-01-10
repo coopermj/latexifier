@@ -9,6 +9,7 @@ services:
       - API_KEYS=dev-key-12345
       - STORAGE_PATH=/data
       - ENVIRONMENT=development
+      - ESV_API_KEY=
     volumes:
       - ./app:/app/app:ro
       - latex_data:/data
