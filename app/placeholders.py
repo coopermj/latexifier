@@ -163,7 +163,7 @@ def _format_scripture_body(
 
     clean = strip_heading_and_footnotes(text)
 
-    verse_pattern = re.compile(r"(^|\n)\s*\[?(\d+)\]?\s+")
+    verse_pattern = re.compile(r"(^|\s)\[?(\d+)\]?\s+", re.MULTILINE)
 
     def verse_repl(match: Match[str]) -> str:
         if include_verse_numbers:
