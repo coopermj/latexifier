@@ -22,12 +22,16 @@ router = APIRouter(prefix="/compile", tags=["compile"])
                 "application/json": {
                     "examples": {
                         "base64": {
-                            "summary": "Base64 output",
+                            "summary": "Base64 PDF output",
                             "value": {"success": True, "pdf": "JVBERi0xLjQK...", "log": "..."}
                         },
                         "url": {
                             "summary": "URL output",
                             "value": {"success": True, "url": "https://latexifier-production.up.railway.app/download/abc-123", "log": "..."}
+                        },
+                        "latex": {
+                            "summary": "LaTeX source (quarto only)",
+                            "value": {"success": True, "latex": "\\documentclass{article}...", "log": "..."}
                         }
                     }
                 },
@@ -37,8 +41,8 @@ router = APIRouter(prefix="/compile", tags=["compile"])
         400: {"description": "Invalid request"},
         500: {"description": "Compilation failed"}
     },
-    summary="Compile LaTeX to PDF",
-    description="Compile LaTeX to PDF. Provide ONE of: content, files, or zip. Set output_format to pdf, base64, or url."
+    summary="Compile LaTeX/Quarto to PDF",
+    description="Compile LaTeX or Quarto to PDF. Set output_format to pdf, base64, url, or latex (quarto only)."
 )
 async def compile_document(request: CompileRequest):
     # Log incoming request for debugging
@@ -62,13 +66,31 @@ async def compile_document(request: CompileRequest):
         )
 
     try:
-        pdf_bytes, log = await compile_latex(request)
+        result, log = await compile_latex(request)
 
         # Determine output filename
         if request.content:
-            out_filename = request.filename.rsplit(".", 1)[0] + ".pdf"
+            base_name = request.filename.rsplit(".", 1)[0]
         else:
-            out_filename = request.main_file.rsplit(".", 1)[0] + ".pdf"
+            base_name = request.main_file.rsplit(".", 1)[0]
+
+        # Handle LaTeX output (Quarto only)
+        if request.output_format == OutputFormat.LATEX:
+            if isinstance(result, str):
+                return CompileResponse(
+                    success=True,
+                    latex=result,
+                    log=log
+                )
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="LaTeX output is only available with engine=quarto"
+                )
+
+        # For PDF outputs, result is bytes
+        pdf_bytes = result
+        out_filename = base_name + ".pdf"
 
         if request.output_format == OutputFormat.PDF:
             return Response(

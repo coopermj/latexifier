@@ -6,6 +6,7 @@ class OutputFormat(str, Enum):
     PDF = "pdf"
     BASE64 = "base64"
     URL = "url"
+    LATEX = "latex"
 
 
 class TexEngine(str, Enum):
@@ -47,7 +48,7 @@ class CompileRequest(BaseModel):
     )
     output_format: OutputFormat = Field(
         OutputFormat.BASE64,
-        description="Output: 'pdf' (raw bytes), 'base64' (JSON), 'url' (download link)"
+        description="Output: pdf, base64, url, or latex (quarto only)"
     )
     engine: TexEngine = Field(
         TexEngine.PDFLATEX,
@@ -59,6 +60,7 @@ class CompileResponse(BaseModel):
     success: bool
     pdf: str | None = Field(None, description="Base64-encoded PDF (if output_format=base64)")
     url: str | None = Field(None, description="Download URL (if output_format=url)")
+    latex: str | None = Field(None, description="LaTeX source (if output_format=latex, quarto only)")
     error: str | None = Field(None, description="Error message if compilation failed")
     log: str | None = Field(None, description="LaTeX compilation log")
 

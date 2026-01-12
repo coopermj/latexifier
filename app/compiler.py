@@ -9,7 +9,7 @@ import zipfile
 from pathlib import Path
 
 from .config import get_settings
-from .models import CompileRequest, FileItem, TexEngine
+from .models import CompileRequest, FileItem, TexEngine, OutputFormat
 from .placeholders import (
     ScripturePlaceholderError,
     process_scripture_placeholders,
@@ -69,11 +69,11 @@ async def check_latex_available() -> tuple[bool, str | None]:
         return False, None
 
 
-async def compile_latex(request: CompileRequest) -> tuple[bytes, str]:
+async def compile_latex(request: CompileRequest) -> tuple[bytes | str, str]:
     """
-    Compile LaTeX to PDF.
+    Compile LaTeX to PDF (or LaTeX source for Quarto with latex output).
 
-    Returns: (pdf_bytes, log_output)
+    Returns: (pdf_bytes or latex_str, log_output)
     Raises: CompilationError on failure
     """
     settings = get_settings()
@@ -137,9 +137,12 @@ async def compile_latex(request: CompileRequest) -> tuple[bytes, str]:
         log_output = ""
 
         if engine == "quarto":
+            # Determine Quarto output format
+            quarto_format = "latex" if request.output_format == OutputFormat.LATEX else "pdf"
+
             # Quarto rendering
             proc = await asyncio.create_subprocess_exec(
-                "quarto", "render", main_file, "--to", "pdf",
+                "quarto", "render", main_file, "--to", quarto_format,
                 cwd=work_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
@@ -156,6 +159,15 @@ async def compile_latex(request: CompileRequest) -> tuple[bytes, str]:
                     "Quarto rendering failed",
                     log=log_output
                 )
+
+            # If latex output requested, return the .tex file
+            if request.output_format == OutputFormat.LATEX:
+                tex_name = main_file.rsplit(".", 1)[0] + ".tex"
+                tex_path = work_dir / tex_name
+                if not tex_path.exists():
+                    raise CompilationError("LaTeX file was not generated", log=log_output)
+                latex_content = tex_path.read_text(encoding="utf-8")
+                return latex_content, log_output
         else:
             # LaTeX compilation (twice for references)
             for run in range(2):
