@@ -12,6 +12,7 @@ class TexEngine(str, Enum):
     PDFLATEX = "pdflatex"
     XELATEX = "xelatex"
     LUALATEX = "lualatex"
+    QUARTO = "quarto"
 
 
 class FileItem(BaseModel):
@@ -50,7 +51,7 @@ class CompileRequest(BaseModel):
     )
     engine: TexEngine = Field(
         TexEngine.PDFLATEX,
-        description="TeX engine: 'pdflatex' (default), 'xelatex' (for fontspec/custom fonts), or 'lualatex'"
+        description="Engine: pdflatex, xelatex, lualatex, or quarto (for .qmd files)"
     )
 
 

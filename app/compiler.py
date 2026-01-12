@@ -30,16 +30,19 @@ def decode_content(content: str) -> bytes:
     Decode content that may be base64-encoded or raw text.
     Accepts both for easier ChatGPT integration.
     """
-    # If it starts with common LaTeX commands, it's raw text
+    # If it starts with common LaTeX commands or Quarto/markdown markers, it's raw text
     stripped = content.strip()
     if stripped.startswith('\\') or stripped.startswith('%'):
         logger.info("Detected raw LaTeX content")
+        return content.encode('utf-8')
+    if stripped.startswith('---') or stripped.startswith('#'):
+        logger.info("Detected raw Quarto/Markdown content")
         return content.encode('utf-8')
 
     # Try base64 decoding
     try:
         decoded = base64.b64decode(content)
-        # Verify it looks like text (LaTeX)
+        # Verify it looks like text (LaTeX/Quarto)
         decoded_str = decoded.decode('utf-8')
         logger.info("Decoded base64 content")
         return decoded
@@ -129,32 +132,54 @@ async def compile_latex(request: CompileRequest) -> tuple[bytes, str]:
             raise CompilationError(str(exc))
 
         # Select engine
-        engine = request.engine.value  # pdflatex, xelatex, or lualatex
+        engine = request.engine.value  # pdflatex, xelatex, lualatex, or quarto
 
-        # Run compiler (twice for references)
         log_output = ""
-        for run in range(2):
+
+        if engine == "quarto":
+            # Quarto rendering
             proc = await asyncio.create_subprocess_exec(
-                engine,
-                "-interaction=nonstopmode",
-                "-halt-on-error",
-                main_file,
+                "quarto", "render", main_file, "--to", "pdf",
                 cwd=work_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
-                env={**os.environ, "TEXMFHOME": str(work_dir)}
+                env={**os.environ, "HOME": str(work_dir)}
             )
             stdout, _ = await asyncio.wait_for(
                 proc.communicate(),
-                timeout=120  # 2 minute timeout
+                timeout=180  # 3 minute timeout for Quarto
             )
             log_output = stdout.decode(errors="replace")
 
             if proc.returncode != 0:
                 raise CompilationError(
-                    f"LaTeX compilation failed (run {run + 1})",
+                    "Quarto rendering failed",
                     log=log_output
                 )
+        else:
+            # LaTeX compilation (twice for references)
+            for run in range(2):
+                proc = await asyncio.create_subprocess_exec(
+                    engine,
+                    "-interaction=nonstopmode",
+                    "-halt-on-error",
+                    main_file,
+                    cwd=work_dir,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env={**os.environ, "TEXMFHOME": str(work_dir)}
+                )
+                stdout, _ = await asyncio.wait_for(
+                    proc.communicate(),
+                    timeout=120  # 2 minute timeout
+                )
+                log_output = stdout.decode(errors="replace")
+
+                if proc.returncode != 0:
+                    raise CompilationError(
+                        f"LaTeX compilation failed (run {run + 1})",
+                        log=log_output
+                    )
 
         # Read output PDF
         pdf_name = main_file.rsplit(".", 1)[0] + ".pdf"

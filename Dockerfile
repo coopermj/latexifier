@@ -1,11 +1,18 @@
 # Use TeX Live as base for full LaTeX support
 FROM texlive/texlive:latest
 
-# Install pip for system Python
+# Install pip for system Python and dependencies for Quarto
 RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-venv \
+    wget \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Quarto
+RUN wget -q https://github.com/quarto-dev/quarto-cli/releases/download/v1.4.557/quarto-1.4.557-linux-amd64.deb \
+    && dpkg -i quarto-1.4.557-linux-amd64.deb \
+    && rm quarto-1.4.557-linux-amd64.deb
 
 # Create app directory
 WORKDIR /app
