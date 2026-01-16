@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 class ScriptureVersion(str, Enum):
     ESV = "ESV"
+    NET = "NET"
 
 
 @dataclass
@@ -143,8 +144,63 @@ async def _fetch_esv(
     )
 
 
+async def _fetch_net(
+    reference: str,
+    options: ScriptureLookupOptions
+) -> ScriptureLookupResult:
+    """Fetch scripture from the NET Bible API (free, no key required)."""
+    params = {
+        "passage": reference,
+        "type": "text",
+        "formatting": "full",  # Include Strong's numbers
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://labs.bible.org/api/",
+                params=params,
+                timeout=15.0
+            )
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        logger.warning(
+            "NET API returned %s for reference '%s'",
+            status,
+            reference
+        )
+        raise ScriptureLookupError(
+            f"NET API request failed with status {status}.",
+            status_code=502
+        ) from exc
+    except httpx.RequestError as exc:
+        logger.error("Error connecting to NET API: %s", exc)
+        raise ScriptureLookupError(
+            "Could not reach the NET Bible API. Try again later.",
+            status_code=502
+        ) from exc
+
+    text = response.text.strip()
+
+    if not text or "passage not found" in text.lower():
+        raise ScriptureLookupError(
+            "No passage text returned for the given reference.",
+            status_code=404
+        )
+
+    return ScriptureLookupResult(
+        reference=reference,
+        version=ScriptureVersion.NET,
+        canonical=None,
+        text=text,
+        translation_name="New English Translation"
+    )
+
+
 VERSION_HANDLER = Callable[[str, ScriptureLookupOptions], Awaitable[ScriptureLookupResult]]
 
 _VERSION_HANDLERS: dict[ScriptureVersion, VERSION_HANDLER] = {
     ScriptureVersion.ESV: _fetch_esv,
+    ScriptureVersion.NET: _fetch_net,
 }

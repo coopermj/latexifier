@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .config import get_settings
 from .models import CompileRequest, FileItem, TexEngine, OutputFormat
+from .commentary import CommentarySource
 from .placeholders import (
     ScripturePlaceholderError,
     process_scripture_placeholders,
@@ -127,7 +128,21 @@ async def compile_latex(request: CompileRequest) -> tuple[bytes | str, str]:
 
         # Replace scripture placeholders before compilation
         try:
-            await process_scripture_placeholders(work_dir, main_file)
+            # Convert commentary source strings to enum values
+            commentary_sources = []
+            if request.include_commentary and request.commentary_sources:
+                for src in request.commentary_sources:
+                    try:
+                        commentary_sources.append(CommentarySource(src))
+                    except ValueError:
+                        logger.warning("Unknown commentary source: %s", src)
+
+            await process_scripture_placeholders(
+                work_dir,
+                main_file,
+                include_commentary=request.include_commentary,
+                commentary_sources=commentary_sources if commentary_sources else None
+            )
         except ScripturePlaceholderError as exc:
             raise CompilationError(str(exc))
 

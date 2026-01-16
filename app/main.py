@@ -1,14 +1,16 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .models import HealthResponse
 from .compiler import check_latex_available
 from .storage import get_pdf, cleanup_expired_pdfs
-from .routes import compile, styles, fonts, packages, scripture
+from .routes import compile, styles, fonts, packages, scripture, sermon_notes, web
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,6 +58,13 @@ app.include_router(styles.router)
 app.include_router(fonts.router)
 app.include_router(packages.router)
 app.include_router(scripture.router)
+app.include_router(sermon_notes.router)
+app.include_router(web.router)
+
+# Mount static files for web frontend
+static_path = Path(__file__).parent / "static"
+if static_path.exists():
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 
 @app.get("/health", response_model=HealthResponse, tags=["utility"])
@@ -72,7 +81,10 @@ async def health_check():
 
 @app.get("/", include_in_schema=False)
 async def root():
-    """Redirect to docs."""
+    """Serve the web frontend."""
+    index_path = Path(__file__).parent / "static" / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
     return {"message": "LaTeXGen API", "docs": "/docs"}
 
 

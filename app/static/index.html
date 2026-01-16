@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sermon Notes Processor</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Password Modal -->
+    <div id="password-modal" class="modal">
+        <div class="modal-content">
+            <h2>Enter Password</h2>
+            <form id="password-form">
+                <input type="password" id="password-input" placeholder="Password" required autofocus>
+                <button type="submit">Enter</button>
+                <p id="password-error" class="error hidden">Invalid password</p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main id="main-content" class="hidden">
+        <header>
+            <h1>Sermon Notes Processor</h1>
+            <button id="logout-btn" class="logout-btn">Logout</button>
+        </header>
+
+        <form id="sermon-form">
+            <div class="form-group">
+                <label for="notes">Sermon Notes</label>
+                <textarea
+                    id="notes"
+                    placeholder="Paste your sermon notes here...
+
+Example format:
+Taming the Tongue
+Tim Cochrell | 1/11/26
+James 3:1-12
+
+Foundational Principle: Your words are the best indicator of your true spiritual condition and a window into your worship. (James 1:26)
+
+1. Power to Direct Your Life
+   A. We All Stumble
+      - We all struggle with our words because of the sin in our hearts.
+      - There are no exceptions!
+   B. The Reins and the Rudder
+      - Whoever controls the bit, controls the beast.
+      - Our words reflect the desires of our hearts..."
+                    required
+                ></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="cover-image">Cover Image (optional)</label>
+                <div class="file-input-wrapper">
+                    <input type="file" id="cover-image" accept="image/png,image/jpeg,image/webp">
+                    <span id="file-name">No file chosen</span>
+                </div>
+                <div id="image-preview" class="image-preview hidden">
+                    <img id="preview-img" alt="Cover preview">
+                    <button type="button" id="clear-image" class="clear-btn">Remove</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Include Commentary (optional)</label>
+                <div class="checkbox-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="commentary-mhc" value="mhc">
+                        <span>Matthew Henry's Commentary</span>
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="commentary-calvin" value="calvincommentaries">
+                        <span>Calvin's Commentaries</span>
+                    </label>
+                </div>
+            </div>
+
+            <button type="submit" id="submit-btn">
+                <span id="btn-text">Generate PDF</span>
+                <span id="btn-spinner" class="spinner hidden"></span>
+            </button>
+        </form>
+
+        <div id="result" class="result hidden">
+            <div id="result-success" class="result-success hidden">
+                <h3>PDF Generated!</h3>
+                <a id="download-link" href="#" target="_blank" class="download-btn">Download PDF</a>
+            </div>
+            <div id="result-error" class="result-error hidden">
+                <h3>Error</h3>
+                <p id="error-message"></p>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

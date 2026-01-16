@@ -8,8 +8,10 @@ import aiofiles
 
 from .config import get_settings
 
-# PDF outputs expire after 7 days (in seconds)
-PDF_EXPIRY_SECONDS = 7 * 24 * 60 * 60
+def get_pdf_expiry_seconds() -> int:
+    """Get PDF expiry time in seconds from settings."""
+    settings = get_settings()
+    return settings.pdf_retention_days * 24 * 60 * 60
 
 
 def get_storage_path() -> Path:
@@ -128,7 +130,7 @@ def get_pdf(pdf_id: str) -> tuple[Path, str] | None:
 
     # Check if expired
     age = time.time() - pdf_path.stat().st_mtime
-    if age > PDF_EXPIRY_SECONDS:
+    if age > get_pdf_expiry_seconds():
         # Clean up expired file
         shutil.rmtree(pdf_dir, ignore_errors=True)
         return None
@@ -138,11 +140,12 @@ def get_pdf(pdf_id: str) -> tuple[Path, str] | None:
 
 def cleanup_expired_pdfs() -> int:
     """
-    Remove PDFs older than 7 days.
+    Remove expired PDFs based on configured retention period.
     Returns count of removed files.
     """
     outputs_path = get_outputs_path()
     removed = 0
+    expiry_seconds = get_pdf_expiry_seconds()
 
     for pdf_dir in outputs_path.iterdir():
         if not pdf_dir.is_dir():
@@ -151,7 +154,7 @@ def cleanup_expired_pdfs() -> int:
         # Check age based on directory modification time
         try:
             age = time.time() - pdf_dir.stat().st_mtime
-            if age > PDF_EXPIRY_SECONDS:
+            if age > expiry_seconds:
                 shutil.rmtree(pdf_dir, ignore_errors=True)
                 removed += 1
         except Exception:

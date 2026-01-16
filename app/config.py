@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     max_file_size: int = 10 * 1024 * 1024  # 10MB
     max_zip_size: int = 50 * 1024 * 1024  # 50MB
     esv_api_key: str = ""
+    anthropic_api_key: str = ""
+    web_password: str = ""
+    pdf_retention_days: int = 8
 
     @property
     def is_development(self) -> bool:
