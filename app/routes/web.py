@@ -1,6 +1,7 @@
 """Web interface routes for sermon notes processing."""
 import base64
 import hashlib
+import json
 import logging
 import secrets
 import tempfile
@@ -20,8 +21,34 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/web", tags=["web"])
 
-# Simple in-memory session storage (tokens valid for session)
-_valid_sessions: set[str] = set()
+
+def _get_sessions_file() -> Path:
+    """Get path to sessions file."""
+    settings = get_settings()
+    return Path(settings.storage_path) / ".sessions.json"
+
+
+def _load_sessions() -> set[str]:
+    """Load sessions from file."""
+    sessions_file = _get_sessions_file()
+    if sessions_file.exists():
+        try:
+            data = json.loads(sessions_file.read_text())
+            return set(data.get("sessions", []))
+        except Exception:
+            pass
+    return set()
+
+
+def _save_sessions(sessions: set[str]) -> None:
+    """Save sessions to file."""
+    sessions_file = _get_sessions_file()
+    sessions_file.parent.mkdir(parents=True, exist_ok=True)
+    sessions_file.write_text(json.dumps({"sessions": list(sessions)}))
+
+
+# Load sessions from file on startup
+_valid_sessions: set[str] = _load_sessions()
 
 
 class AuthRequest(BaseModel):
@@ -36,6 +63,7 @@ class GenerateRequest(BaseModel):
     notes: str
     image: str | None = None  # Base64 encoded image
     commentaries: list[str] = []  # Commentary sources: mhc, calvincommentaries
+    strongs_numbers: list[str] = []  # Strong's numbers for Greek word study (e.g., G225)
 
 
 class GenerateResponse(BaseModel):
@@ -54,6 +82,20 @@ async def authenticate(request: AuthRequest, response: Response):
     """Validate password and set session cookie."""
     settings = get_settings()
 
+    # Auto-succeed in development mode
+    if settings.is_development:
+        token = secrets.token_urlsafe(32)
+        _valid_sessions.add(token)
+        _save_sessions(_valid_sessions)
+        response.set_cookie(
+            key="session",
+            value=token,
+            httponly=True,
+            samesite="strict",
+            max_age=86400
+        )
+        return AuthResponse(valid=True)
+
     if not settings.web_password:
         raise HTTPException(
             status_code=503,
@@ -64,6 +106,7 @@ async def authenticate(request: AuthRequest, response: Response):
         # Generate session token
         token = secrets.token_urlsafe(32)
         _valid_sessions.add(token)
+        _save_sessions(_valid_sessions)
 
         # Set cookie (httponly for security)
         response.set_cookie(
@@ -87,9 +130,11 @@ async def generate_sermon_pdf(
     """Generate sermon PDF from pasted notes and optional image."""
     settings = get_settings()
 
-    # Validate session
-    if not session or session not in _valid_sessions:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    # Skip auth in development mode
+    if not settings.is_development:
+        # Validate session
+        if not session or session not in _valid_sessions:
+            raise HTTPException(status_code=401, detail="Not authenticated")
 
     if not request.notes or not request.notes.strip():
         return GenerateResponse(success=False, error="No sermon notes provided")
@@ -130,7 +175,7 @@ async def generate_sermon_pdf(
             image_data = None
 
     # Generate LaTeX
-    logger.info("Generating LaTeX with commentary sources: %s", request.commentaries)
+    logger.info("Generating LaTeX with commentary sources: %s, strongs: %s", request.commentaries, request.strongs_numbers)
     try:
         latex_content = await generate_sermon_latex(
             outline=outline,
@@ -138,7 +183,8 @@ async def generate_sermon_pdf(
             subpoint_version="NET",
             include_main_passage=True,
             cover_image=cover_image_filename,
-            commentary_sources=request.commentaries
+            commentary_sources=request.commentaries,
+            strongs_numbers=request.strongs_numbers if request.strongs_numbers else None
         )
     except Exception as exc:
         logger.exception("LaTeX generation failed")
@@ -167,7 +213,10 @@ async def generate_sermon_pdf(
             pdf_bytes = pdf_result
 
         # Save PDF and get URL
-        pdf_id = await save_pdf(pdf_bytes, "sermon.pdf")
+        # Use sermon title as filename (sanitize for filesystem)
+        safe_title = "".join(c for c in outline.metadata.title if c.isalnum() or c in " -_").strip()
+        filename = f"{safe_title}.pdf" if safe_title else "sermon.pdf"
+        pdf_id = await save_pdf(pdf_bytes, filename)
         download_url = f"/download/{pdf_id}"
 
         return GenerateResponse(success=True, url=download_url)
@@ -265,6 +314,7 @@ async def logout(response: Response, session: str | None = Cookie(default=None))
     """Clear session cookie."""
     if session and session in _valid_sessions:
         _valid_sessions.discard(session)
+        _save_sessions(_valid_sessions)
 
     response.delete_cookie(key="session")
     return {"success": True}

@@ -97,8 +97,13 @@ def clean_commentary_text(text: str) -> str:
     text = re.sub(r'\*\s*\d+\s*\*', '', text)
     # Remove italics markers like * word *
     text = re.sub(r'\*\s*([^*]+?)\s*\*', r'\1', text)
-    # Normalize whitespace but preserve paragraph breaks
+
+    # Convert multiple spaces (3+) to paragraph breaks BEFORE normalizing
+    text = re.sub(r'  +', '\n\n', text)
+
+    # Normalize single spaces and tabs
     text = re.sub(r'[ \t]+', ' ', text)
+    # Normalize multiple newlines to double newlines
     text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
     return text.strip()
 

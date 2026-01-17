@@ -1,10 +1,21 @@
 """Generate LaTeX from parsed sermon outline."""
+import json
 import logging
+from pathlib import Path
 
 from .models import SermonOutline, SermonPoint, SermonSubPoint
 from .commentary import CommentarySource, fetch_commentary_for_reference, CommentaryResult
 
 logger = logging.getLogger(__name__)
+
+# Load Strong's Greek data
+STRONGS_GREEK = {}
+strongs_path = Path(__file__).parent / "strongs_greek.json"
+if strongs_path.exists():
+    try:
+        STRONGS_GREEK = json.loads(strongs_path.read_text())
+    except Exception as e:
+        logger.warning("Failed to load Strong's Greek data: %s", e)
 
 
 def escape_latex(text: str) -> str:
@@ -54,7 +65,8 @@ async def generate_sermon_latex(
     subpoint_version: str = "NET",
     include_main_passage: bool = True,
     cover_image: str | None = None,
-    commentary_sources: list[str] | None = None
+    commentary_sources: list[str] | None = None,
+    strongs_numbers: list[str] | None = None
 ) -> str:
     """
     Generate LaTeX document from sermon outline.
@@ -66,6 +78,7 @@ async def generate_sermon_latex(
         include_main_passage: Whether to include full main passage text
         cover_image: Optional filename of cover image (must be in work directory)
         commentary_sources: List of commentary sources to include (mhc, calvincommentaries)
+        strongs_numbers: List of Strong's numbers for Greek Word Study appendix (e.g., ['G225', 'G5579'])
 
     Returns:
         Complete LaTeX document as string
@@ -118,7 +131,7 @@ async def generate_sermon_latex(
 \usepackage{multicol}
 
 % Microtypography
-\usepackage[protrusion=true,expansion=true,tracking=true,kerning=true,spacing=true]{microtype}
+\usepackage[protrusion=true,expansion=true,verbose=silent]{microtype}
 
 % PDF metadata / links
 \usepackage{hyperref}
@@ -128,14 +141,15 @@ async def generate_sermon_latex(
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}%
 }
 
-% Two-column scripture + bullets
+% Two-column scripture + notes (with gutter)
 \newcommand{\scripturebullets}[2]{%
   \begin{samepage}
   \noindent
-  \begin{minipage}[t]{0.50\textwidth}
+  \begin{minipage}[t]{0.46\textwidth}
     #1
-  \end{minipage}\hfill
-  \begin{minipage}[t]{0.50\textwidth}
+  \end{minipage}%
+  \hspace{0.06\textwidth}%
+  \begin{minipage}[t]{0.46\textwidth}
     #2
   \end{minipage}
   \end{samepage}
@@ -176,6 +190,8 @@ async def generate_sermon_latex(
 ]
 % Serif font for scripture quotations (Computer Modern Roman)
 \newfontfamily\scripturefont{Latin Modern Roman}
+\newfontfamily\wordstudy{Latin Modern Roman}
+\newfontfamily\greekfont{Times New Roman}
 \newfontfamily\josefin{Josefin Sans}
 \newfontfamily\commentaryfont{BanglaMN.ttf}[
   Path = ./,
@@ -286,6 +302,10 @@ async def generate_sermon_latex(
     for point in outline.points:
         lines.extend(_render_point(point, subpoint_version))
 
+    # Greek Word Study appendix
+    if strongs_numbers:
+        lines.extend(_render_word_study(strongs_numbers))
+
     # Commentary appendix
     if commentary_sources:
         commentary_lines = await _render_commentary_appendix(
@@ -302,65 +322,142 @@ async def generate_sermon_latex(
 def _render_point(point: SermonPoint, version: str) -> list[str]:
     """Render a main sermon point as a section."""
     lines = []
+    section_title = escape_latex(point.title)
 
-    lines.append(rf"\section{{{escape_latex(point.title)}}}")
-    lines.append("")
-
-    if point.content:
-        lines.append(escape_latex(point.content))
+    # If point has sub-points, each sub-point gets its own page with section header
+    if point.sub_points:
+        for sub in point.sub_points:
+            lines.extend(_render_subpoint(sub, version, section_title))
+    else:
+        # Point with no sub-points - render as full-width on its own page
+        lines.append(r"\newpage{}")
+        lines.append(rf"\section{{{section_title}}}")
         lines.append("")
 
-    # Sub-points as subsections with scripturebullets
-    for sub in point.sub_points:
-        lines.extend(_render_subpoint(sub, version))
+        if point.content:
+            lines.append(escape_latex(point.content))
+            lines.append("")
 
-    lines.append(r"\newpage{}")
-    lines.append("")
+        # If there are scripture refs but no sub-points, render as list
+        if point.scripture_refs:
+            lines.append(r"\begin{itemize}")
+            lines.append(r"\setlength{\itemsep}{20pt}")
+            for ref in point.scripture_refs:
+                lines.append(rf"\item {escape_latex(ref)}")
+            lines.append(r"\end{itemize}")
 
     return lines
 
 
-def _render_subpoint(sub: SermonSubPoint, version: str) -> list[str]:
-    """Render a sub-point with scripture on left, bullets on right."""
+def _render_subpoint(sub: SermonSubPoint, version: str, section_title: str = "") -> list[str]:
+    """Render a sub-point - two-column if has scripture refs, full-width otherwise."""
     lines = []
 
-    title = escape_latex(sub.title) if sub.title else ""
-    lines.append(rf"\subsection{{{title}}}")
+    # Each sub-point starts on a new page
+    lines.append(r"\newpage{}")
+
+    # Section header at top of each sub-point page
+    if section_title:
+        lines.append(rf"\section{{{section_title}}}")
+        lines.append("")
+
+    sub_title = escape_latex(sub.title) if sub.title else ""
+    if sub.label:
+        sub_title = f"{sub.label}. {sub_title}"
+    lines.append(rf"\subsection{{{sub_title}}}")
     lines.append("")
 
-    # Build scripture side
-    scripture_lines = []
-    if sub.scripture_verse:
-        scripture_lines.append(scripture_placeholder(sub.scripture_verse, version))
-    scripture_lines.append(r"\vspace{2.2in}")
-    scripture_content = "\n".join(scripture_lines)
+    # Check if this sub-point has scripture references
+    has_scripture = sub.scripture_verse or sub.scripture_refs
 
-    # Build bullets side
-    bullet_lines = []
-    bullets = sub.bullets if sub.bullets else []
-    # If no bullets but content exists, use content as a single bullet
-    if not bullets and sub.content:
-        bullets = [sub.content]
+    if has_scripture:
+        # Two-column layout: scripture on left, notes on right
+        scripture_lines = []
+        if sub.scripture_verse:
+            scripture_lines.append(scripture_placeholder(sub.scripture_verse, version))
+        if sub.scripture_refs:
+            for ref in sub.scripture_refs:
+                if scripture_lines:
+                    scripture_lines.append("")
+                    scripture_lines.append(r"\vspace{0.5cm}")
+                    scripture_lines.append("")
+                scripture_lines.append(scripture_placeholder(ref, version))
+        scripture_lines.append(r"\vspace{2in}")
+        scripture_content = "\n".join(scripture_lines)
 
-    if bullets:
-        bullet_lines.append(r"\begin{itemize}")
-        bullet_lines.append(r"\tightlist")
-        for bullet in bullets:
-            bullet_lines.append(rf"\item {escape_latex(bullet)}\\")
-        bullet_lines.append(r"\end{itemize}")
-    bullet_lines.append(r"\vspace{2.2in}")
-    bullets_content = "\n".join(bullet_lines)
+        # Build notes side
+        note_lines = []
+        if sub.content:
+            note_lines.append(escape_latex(sub.content))
+            note_lines.append("")
 
-    # Combine with scripturebullets
-    lines.append(r"\scripturebullets")
-    lines.append(r"{%")
-    lines.append(scripture_content)
-    lines.append(r"}%")
-    lines.append(r"{%")
-    lines.append(bullets_content)
-    lines.append(r"}%")
+        if sub.bullets:
+            note_lines.append(r"\begin{itemize}")
+            note_lines.append(r"\setlength{\itemsep}{10pt}")
+            for bullet in sub.bullets:
+                note_lines.append(rf"\item {escape_latex(bullet)}")
+            note_lines.append(r"\end{itemize}")
+
+        note_lines.append(r"\vspace{2in}")
+        notes_content = "\n".join(note_lines)
+
+        # Combine with scripturebullets
+        lines.append(r"\scripturebullets")
+        lines.append(r"{%")
+        lines.append(scripture_content)
+        lines.append(r"}%")
+        lines.append(r"{%")
+        lines.append(notes_content)
+        lines.append(r"}%")
+    else:
+        # Full-width layout (no scripture)
+        if sub.content:
+            lines.append(escape_latex(sub.content))
+            lines.append("")
+
+        if sub.bullets:
+            lines.append(r"\begin{itemize}")
+            lines.append(r"\setlength{\itemsep}{20pt}")
+            for bullet in sub.bullets:
+                lines.append(rf"\item {escape_latex(bullet)}")
+            lines.append(r"\end{itemize}")
+
+    lines.append("")
+    return lines
+
+
+def _render_word_study(strongs_numbers: list[str]) -> list[str]:
+    """Render Greek Word Study appendix with Strong's numbers."""
+    lines = []
+
+    if not strongs_numbers or not STRONGS_GREEK:
+        return lines
+
+    lines.append("")
+    lines.append(r"\newpage{}")
+    lines.append(r"\newgeometry{left=20mm,right=25mm,top=15mm,bottom=15mm}")
+    lines.append(r"\section{Greek Word Study}")
+    lines.append("")
+    lines.append(r"\wordstudy")
     lines.append("")
 
+    for num in strongs_numbers:
+        # Strip 'G' prefix if present
+        num_key = num.lstrip('Gg')
+        if num_key in STRONGS_GREEK:
+            entry = STRONGS_GREEK[num_key]
+            greek = entry.get('greek', '')
+            translit = entry.get('translit', '')
+            definition = entry.get('def', '')
+
+            lines.append(r"\vspace{20pt}")
+            lines.append("")
+            lines.append(rf"\textbf{{G{num_key}}} --- {{\greekfont {greek}}} (\emph{{{translit}}})")
+            lines.append(r"\\")
+            lines.append(rf"\textit{{{escape_latex(definition)}}}")
+            lines.append("")
+
+    lines.append(r"\restoregeometry")
     return lines
 
 

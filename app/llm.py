@@ -13,25 +13,34 @@ SERMON_EXTRACTION_PROMPT_BASE = '''You are analyzing sermon notes. Extract the s
 
 Analyze the document and extract:
 1. **Metadata**: title, speaker name, date, series name (if present)
-2. **Main Scripture Passage**: The primary passage for the sermon (e.g., "James 3:1-12")
-3. **Foundational Principle**: Any key principle, thesis, or summary statement
+2. **Main Scripture Passage**: The primary passage for the sermon (e.g., "Ephesians 4:22-25")
+3. **Foundational Principle**: Any key principle, thesis, or summary statement (if present)
 4. **Outline Structure**:
    - Numbered main points (1, 2, 3...)
    - Lettered sub-points (A, B, C...) under each main point
-   - For each sub-point, identify which specific verses from the main passage relate to it
-   - IMPORTANT: Extract each bullet point or sentence as a SEPARATE item in the bullets array
-5. **Scripture References**: All Bible references mentioned anywhere
+   - Bullets (marked with ●, -, or •) under sub-points
+5. **Scripture References**: All Bible references mentioned in parentheses
+
+CRITICAL STRUCTURE RULES:
+- Only create sub-points (A, B, C) when EXPLICITLY marked with letters in the original
+- Only create bullets when EXPLICITLY marked with ●, -, or • in the original
+- Keep related sentences together as "content" - do NOT split prose into separate bullets
+- If a section has no lettered sub-points, treat it as a simple point with content
+- If a section is just a numbered list (1, 2, 3...) without letters, each item is a separate main point
+- Sections that appear twice (brief then expanded) should be treated as SEPARATE main points
+- Preserve the EXACT structure from the original notes
 
 For scripture references:
+- Extract ALL parenthetical references like (Prov. 6:16, 12:22) into scripture_refs array
 - Use standard format: "Book Chapter:Verse" or "Book Chapter:Verse-Verse"
-- Include book numbers where applicable: "1 John 3:16" not "I John 3:16"
-- For scripture_verse in sub_points, infer which verses from the main passage correspond to that sub-point's theme
+- Include book numbers: "1 John 3:16" not "I John 3:16"
+- Keep the parenthetical reference in the content text as well
 
-IMPORTANT for bullets:
-- Each distinct point, sentence, or bullet from the notes should be a SEPARATE string in the bullets array
-- Do NOT combine multiple points into one bullet
-- Example: If notes say "We all stumble. There are no exceptions!" extract as:
-  "bullets": ["We all stumble.", "There are no exceptions!"]
+LAYOUT HINTS (for rendering):
+- Sub-points WITH scripture_refs will show scripture on left, notes on right
+- Sub-points WITHOUT scripture_refs will be full-width text
+- Each sub-point gets its own page
+- Numbered lists without sub-points go on one page with spacing between items
 
 Return ONLY valid JSON matching this exact structure:
 {

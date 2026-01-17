@@ -183,11 +183,14 @@ sermonForm.addEventListener('submit', async (e) => {
     const commentaries = [];
     const mhcCheckbox = document.getElementById('commentary-mhc');
     const calvinCheckbox = document.getElementById('commentary-calvin');
-    console.log('MHC checkbox:', mhcCheckbox, 'checked:', mhcCheckbox?.checked);
-    console.log('Calvin checkbox:', calvinCheckbox, 'checked:', calvinCheckbox?.checked);
     if (mhcCheckbox && mhcCheckbox.checked) commentaries.push(mhcCheckbox.value);
     if (calvinCheckbox && calvinCheckbox.checked) commentaries.push(calvinCheckbox.value);
-    console.log('Commentaries to send:', commentaries);
+
+    // Collect Strong's numbers
+    const strongsInput = document.getElementById('strongs-numbers');
+    const strongsNumbers = strongsInput && strongsInput.value.trim()
+        ? strongsInput.value.split(',').map(s => s.trim()).filter(s => s)
+        : [];
 
     try {
         const response = await fetch('/web/generate', {
@@ -196,7 +199,8 @@ sermonForm.addEventListener('submit', async (e) => {
             body: JSON.stringify({
                 notes: notes,
                 image: coverImageBase64,
-                commentaries: commentaries
+                commentaries: commentaries,
+                strongs_numbers: strongsNumbers
             }),
             credentials: 'include'
         });
