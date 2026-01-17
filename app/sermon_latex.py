@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .models import SermonOutline, SermonPoint, SermonSubPoint
 from .commentary import CommentarySource, fetch_commentary_for_reference, CommentaryResult
+from .scripture import fetch_scripture, ScriptureVersion, ScriptureLookupOptions
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +66,7 @@ async def generate_sermon_latex(
     subpoint_version: str = "NET",
     include_main_passage: bool = True,
     cover_image: str | None = None,
-    commentary_sources: list[str] | None = None,
-    strongs_numbers: list[str] | None = None
+    commentary_sources: list[str] | None = None
 ) -> str:
     """
     Generate LaTeX document from sermon outline.
@@ -78,7 +78,6 @@ async def generate_sermon_latex(
         include_main_passage: Whether to include full main passage text
         cover_image: Optional filename of cover image (must be in work directory)
         commentary_sources: List of commentary sources to include (mhc, calvincommentaries)
-        strongs_numbers: List of Strong's numbers for Greek Word Study appendix (e.g., ['G225', 'G5579'])
 
     Returns:
         Complete LaTeX document as string
@@ -302,9 +301,22 @@ async def generate_sermon_latex(
     for point in outline.points:
         lines.extend(_render_point(point, subpoint_version))
 
-    # Greek Word Study appendix
+    # Greek Word Study appendix - fetch Strong's numbers from NET Bible
+    strongs_numbers = set()
+    if main_passage:
+        try:
+            net_result = await fetch_scripture(
+                main_passage,
+                ScriptureVersion.NET,
+                ScriptureLookupOptions()
+            )
+            strongs_numbers = net_result.strongs_numbers
+            logger.info("Extracted %d Strong's numbers from %s", len(strongs_numbers), main_passage)
+        except Exception as e:
+            logger.warning("Failed to fetch Strong's numbers for %s: %s", main_passage, e)
+
     if strongs_numbers:
-        lines.extend(_render_word_study(strongs_numbers))
+        lines.extend(_render_word_study_from_strongs(strongs_numbers))
 
     # Commentary appendix
     if commentary_sources:
@@ -447,11 +459,17 @@ def _render_subpoint(sub: SermonSubPoint, version: str, section_title: str = "")
     return lines
 
 
-def _render_word_study(strongs_numbers: list[str]) -> list[str]:
-    """Render Greek Word Study appendix with Strong's numbers."""
+def _render_word_study_from_strongs(strongs_numbers: set[str]) -> list[str]:
+    """Render Greek Word Study appendix from Strong's numbers extracted from NET Bible."""
     lines = []
 
-    if not strongs_numbers or not STRONGS_GREEK:
+    if not strongs_numbers:
+        return lines
+
+    # Filter to only numbers we have data for
+    valid_numbers = [num for num in sorted(strongs_numbers, key=lambda x: int(x)) if num in STRONGS_GREEK]
+
+    if not valid_numbers:
         return lines
 
     lines.append("")
@@ -462,21 +480,19 @@ def _render_word_study(strongs_numbers: list[str]) -> list[str]:
     lines.append(r"\wordstudy")
     lines.append("")
 
-    for num in strongs_numbers:
-        # Strip 'G' prefix if present
-        num_key = num.lstrip('Gg')
-        if num_key in STRONGS_GREEK:
-            entry = STRONGS_GREEK[num_key]
-            greek = entry.get('greek', '')
-            translit = entry.get('translit', '')
-            definition = entry.get('def', '')
+    for num in valid_numbers:
+        entry = STRONGS_GREEK[num]
+        greek = entry.get('greek', '')
+        translit = entry.get('translit', '')
+        definition = entry.get('def', '')
 
-            lines.append(r"\vspace{20pt}")
-            lines.append("")
-            lines.append(rf"\textbf{{G{num_key}}} --- {{\greekfont {greek}}} (\emph{{{translit}}})")
-            lines.append(r"\\")
-            lines.append(rf"\textit{{{escape_latex(definition)}}}")
-            lines.append("")
+        lines.append(r"\vspace{20pt}")
+        lines.append("")
+        # Use wordstudy font for entire entry with itshape for italics
+        lines.append(rf"{{\wordstudy\textbf{{G{num}}}}} --- {{\greekfont {greek}}} ({{\wordstudy\itshape {translit}}})")
+        lines.append(r"\\")
+        lines.append(rf"{{\wordstudy\itshape {escape_latex(definition)}}}")
+        lines.append("")
 
     lines.append(r"\restoregeometry")
     return lines

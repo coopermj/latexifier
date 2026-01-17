@@ -1,6 +1,7 @@
 import logging
 import os
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Awaitable, Callable
 
@@ -9,6 +10,19 @@ import httpx
 from .config import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+def extract_strongs_numbers(html_text: str) -> set[str]:
+    """Extract Strong's numbers from NET Bible HTML response.
+
+    The NET API returns HTML with Strong's numbers in data-num attributes:
+    <st data-num="659" class="">lay aside</st>
+
+    Returns set of Strong's numbers as strings (e.g., {'659', '444', '225'})
+    """
+    pattern = r'data-num="(\d+)"'
+    matches = re.findall(pattern, html_text)
+    return set(matches)
 
 
 class ScriptureVersion(str, Enum):
@@ -31,6 +45,7 @@ class ScriptureLookupResult:
     text: str
     canonical: str | None = None
     translation_name: str | None = None
+    strongs_numbers: set[str] = field(default_factory=set)
 
 
 class ScriptureLookupError(Exception):
@@ -189,12 +204,16 @@ async def _fetch_net(
             status_code=404
         )
 
+    # Extract Strong's numbers from the HTML response
+    strongs = extract_strongs_numbers(text)
+
     return ScriptureLookupResult(
         reference=reference,
         version=ScriptureVersion.NET,
         canonical=None,
         text=text,
-        translation_name="New English Translation"
+        translation_name="New English Translation",
+        strongs_numbers=strongs
     )
 
 

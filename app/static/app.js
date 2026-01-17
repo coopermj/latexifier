@@ -186,12 +186,6 @@ sermonForm.addEventListener('submit', async (e) => {
     if (mhcCheckbox && mhcCheckbox.checked) commentaries.push(mhcCheckbox.value);
     if (calvinCheckbox && calvinCheckbox.checked) commentaries.push(calvinCheckbox.value);
 
-    // Collect Strong's numbers
-    const strongsInput = document.getElementById('strongs-numbers');
-    const strongsNumbers = strongsInput && strongsInput.value.trim()
-        ? strongsInput.value.split(',').map(s => s.trim()).filter(s => s)
-        : [];
-
     try {
         const response = await fetch('/web/generate', {
             method: 'POST',
@@ -199,8 +193,7 @@ sermonForm.addEventListener('submit', async (e) => {
             body: JSON.stringify({
                 notes: notes,
                 image: coverImageBase64,
-                commentaries: commentaries,
-                strongs_numbers: strongsNumbers
+                commentaries: commentaries
             }),
             credentials: 'include'
         });
@@ -213,7 +206,7 @@ sermonForm.addEventListener('submit', async (e) => {
         const data = await response.json();
 
         if (data.success && data.url) {
-            showSuccess(data.url);
+            showSuccess(data.url, data.tex_url);
         } else {
             showError(data.error || 'Unknown error occurred');
         }
@@ -237,8 +230,15 @@ function hideResults() {
     resultError.classList.add('hidden');
 }
 
-function showSuccess(url) {
+function showSuccess(url, texUrl) {
     downloadLink.href = url;
+    const texLink = document.getElementById('download-tex-link');
+    if (texLink && texUrl) {
+        texLink.href = texUrl;
+        texLink.style.display = 'inline-block';
+    } else if (texLink) {
+        texLink.style.display = 'none';
+    }
     result.classList.remove('hidden');
     resultSuccess.classList.remove('hidden');
     resultError.classList.add('hidden');

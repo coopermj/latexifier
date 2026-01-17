@@ -10,10 +10,9 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Cookie, Response
 from pydantic import BaseModel
 
-from ..compiler import compile_latex, CompilationError
+from ..compiler import CompilationError
 from ..config import get_settings
 from ..llm import extract_sermon_outline_from_text, LLMError
-from ..models import CompileRequest, TexEngine, OutputFormat
 from ..sermon_latex import generate_sermon_latex
 from ..storage import save_pdf
 
@@ -63,12 +62,12 @@ class GenerateRequest(BaseModel):
     notes: str
     image: str | None = None  # Base64 encoded image
     commentaries: list[str] = []  # Commentary sources: mhc, calvincommentaries
-    strongs_numbers: list[str] = []  # Strong's numbers for Greek word study (e.g., G225)
 
 
 class GenerateResponse(BaseModel):
     success: bool
     url: str | None = None
+    tex_url: str | None = None
     error: str | None = None
 
 
@@ -175,7 +174,7 @@ async def generate_sermon_pdf(
             image_data = None
 
     # Generate LaTeX
-    logger.info("Generating LaTeX with commentary sources: %s, strongs: %s", request.commentaries, request.strongs_numbers)
+    logger.info("Generating LaTeX with commentary sources: %s", request.commentaries)
     try:
         latex_content = await generate_sermon_latex(
             outline=outline,
@@ -183,8 +182,7 @@ async def generate_sermon_pdf(
             subpoint_version="NET",
             include_main_passage=True,
             cover_image=cover_image_filename,
-            commentary_sources=request.commentaries,
-            strongs_numbers=request.strongs_numbers if request.strongs_numbers else None
+            commentary_sources=request.commentaries
         )
     except Exception as exc:
         logger.exception("LaTeX generation failed")
@@ -192,34 +190,29 @@ async def generate_sermon_pdf(
 
     # Compile to PDF
     try:
-        compile_request = CompileRequest(
-            content=latex_content,
-            filename="sermon.tex",
-            engine=TexEngine.LUALATEX,
-            output_format=OutputFormat.BASE64
-        )
-
         # If we have a cover image, we need to handle it specially
         # The compiler copies files to a temp directory, so we need to inject the image
+        processed_tex = latex_content  # Default to unprocessed
         if cover_image_filename and image_data:
             # Create a custom compilation with the image
-            pdf_bytes, log = await _compile_with_image(
+            pdf_bytes, log, processed_tex = await _compile_with_image(
                 latex_content,
                 cover_image_filename,
                 image_data
             )
         else:
-            pdf_result, log = await compile_latex(compile_request)
-            pdf_bytes = pdf_result
+            # For non-image case, also get processed tex
+            pdf_bytes, log, processed_tex = await _compile_without_image(latex_content)
 
-        # Save PDF and get URL
+        # Save PDF and tex, get URLs
         # Use sermon title as filename (sanitize for filesystem)
         safe_title = "".join(c for c in outline.metadata.title if c.isalnum() or c in " -_").strip()
         filename = f"{safe_title}.pdf" if safe_title else "sermon.pdf"
-        pdf_id = await save_pdf(pdf_bytes, filename)
+        pdf_id = await save_pdf(pdf_bytes, filename, tex_content=processed_tex)
         download_url = f"/download/{pdf_id}"
+        tex_url = f"/download/{pdf_id}/tex"
 
-        return GenerateResponse(success=True, url=download_url)
+        return GenerateResponse(success=True, url=download_url, tex_url=tex_url)
 
     except CompilationError as exc:
         logger.error("Compilation failed: %s", exc.message)
@@ -233,12 +226,89 @@ async def generate_sermon_pdf(
         return GenerateResponse(success=False, error=f"Compilation error: {exc}")
 
 
+async def _compile_without_image(latex_content: str) -> tuple[bytes, str, str]:
+    """Compile LaTeX without cover image.
+
+    Returns: (pdf_bytes, log_output, processed_tex_content)
+    """
+    import asyncio
+    import os
+    import shutil
+    from ..config import get_settings
+    from ..placeholders import process_scripture_placeholders
+
+    settings = get_settings()
+    work_dir = Path(tempfile.mkdtemp(prefix="latexgen_"))
+
+    try:
+        # Write LaTeX file
+        tex_file = work_dir / "sermon.tex"
+        tex_file.write_text(latex_content, encoding="utf-8")
+
+        # Copy global styles and fonts
+        styles_dir = Path(settings.storage_path) / "styles"
+        fonts_dir = Path(settings.storage_path) / "fonts"
+
+        if styles_dir.exists():
+            for style_file in styles_dir.glob("*"):
+                shutil.copy(style_file, work_dir / style_file.name)
+
+        if fonts_dir.exists():
+            for font_file in fonts_dir.glob("*"):
+                shutil.copy(font_file, work_dir / font_file.name)
+
+        # Process scripture placeholders
+        await process_scripture_placeholders(work_dir, "sermon.tex")
+
+        # Read the processed tex content AFTER placeholder processing
+        processed_tex = tex_file.read_text(encoding="utf-8")
+
+        # Compile with LuaLaTeX (twice for references)
+        log_output = ""
+        for run in range(2):
+            proc = await asyncio.create_subprocess_exec(
+                "lualatex",
+                "-interaction=nonstopmode",
+                "-halt-on-error",
+                "sermon.tex",
+                cwd=work_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env={**os.environ, "TEXMFHOME": str(work_dir)}
+            )
+            stdout, _ = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=120
+            )
+            log_output = stdout.decode(errors="replace")
+
+            if proc.returncode != 0:
+                raise CompilationError(
+                    f"LaTeX compilation failed (run {run + 1})",
+                    log=log_output
+                )
+
+        # Read output PDF
+        pdf_path = work_dir / "sermon.pdf"
+        if not pdf_path.exists():
+            raise CompilationError("PDF was not generated", log=log_output)
+
+        pdf_bytes = pdf_path.read_bytes()
+        return pdf_bytes, log_output, processed_tex
+
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
 async def _compile_with_image(
     latex_content: str,
     image_filename: str,
     image_data: bytes
-) -> tuple[bytes, str]:
-    """Compile LaTeX with cover image injected into work directory."""
+) -> tuple[bytes, str, str]:
+    """Compile LaTeX with cover image injected into work directory.
+
+    Returns: (pdf_bytes, log_output, processed_tex_content)
+    """
     import asyncio
     import os
     import shutil
@@ -272,6 +342,9 @@ async def _compile_with_image(
         # Process scripture placeholders
         await process_scripture_placeholders(work_dir, "sermon.tex")
 
+        # Read the processed tex content AFTER placeholder processing
+        processed_tex = tex_file.read_text(encoding="utf-8")
+
         # Compile with LuaLaTeX (twice for references)
         log_output = ""
         for run in range(2):
@@ -303,7 +376,7 @@ async def _compile_with_image(
             raise CompilationError("PDF was not generated", log=log_output)
 
         pdf_bytes = pdf_path.read_bytes()
-        return pdf_bytes, log_output
+        return pdf_bytes, log_output, processed_tex
 
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)

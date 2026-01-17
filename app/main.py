@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import get_settings
 from .models import HealthResponse
 from .compiler import check_latex_available
-from .storage import get_pdf, cleanup_expired_pdfs
+from .storage import get_pdf, get_tex, cleanup_expired_pdfs
 from .routes import compile, styles, fonts, packages, scripture, sermon_notes, web
 
 logging.basicConfig(level=logging.INFO)
@@ -105,6 +105,27 @@ async def download_pdf(pdf_id: str):
     return FileResponse(
         path=pdf_path,
         media_type="application/pdf",
+        filename=filename,
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@app.get("/download/{pdf_id}/tex", tags=["utility"], summary="Download LaTeX source")
+async def download_tex(pdf_id: str):
+    """
+    Download the LaTeX source file for a compiled PDF.
+    """
+    result = get_tex(pdf_id)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="TeX file not found or expired."
+        )
+
+    tex_path, filename = result
+    return FileResponse(
+        path=tex_path,
+        media_type="application/x-tex",
         filename=filename,
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )

@@ -89,9 +89,10 @@ def get_outputs_path() -> Path:
     return path
 
 
-async def save_pdf(content: bytes, filename: str = "document.pdf") -> str:
+async def save_pdf(content: bytes, filename: str = "document.pdf", tex_content: str | None = None) -> str:
     """
     Save a compiled PDF to storage with a unique ID.
+    Optionally saves the tex source alongside.
     Returns the ID for later retrieval.
     """
     pdf_id = str(uuid.uuid4())
@@ -108,6 +109,13 @@ async def save_pdf(content: bytes, filename: str = "document.pdf") -> str:
     pdf_path = pdf_dir / safe_filename
     async with aiofiles.open(pdf_path, "wb") as f:
         await f.write(content)
+
+    # Save tex source if provided
+    if tex_content:
+        tex_filename = safe_filename.replace(".pdf", ".tex")
+        tex_path = pdf_dir / tex_filename
+        async with aiofiles.open(tex_path, "w", encoding="utf-8") as f:
+            await f.write(tex_content)
 
     return pdf_id
 
@@ -136,6 +144,30 @@ def get_pdf(pdf_id: str) -> tuple[Path, str] | None:
         return None
 
     return pdf_path, pdf_path.name
+
+
+def get_tex(pdf_id: str) -> tuple[Path, str] | None:
+    """
+    Get a stored tex file by ID.
+    Returns (path, filename) or None if not found/expired.
+    """
+    pdf_dir = get_outputs_path() / pdf_id
+    if not pdf_dir.exists():
+        return None
+
+    # Find the tex file in the directory
+    tex_files = list(pdf_dir.glob("*.tex"))
+    if not tex_files:
+        return None
+
+    tex_path = tex_files[0]
+
+    # Check if expired
+    age = time.time() - tex_path.stat().st_mtime
+    if age > get_pdf_expiry_seconds():
+        return None
+
+    return tex_path, tex_path.name
 
 
 def cleanup_expired_pdfs() -> int:
