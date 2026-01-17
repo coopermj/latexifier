@@ -39,8 +39,16 @@ For scripture references:
 LAYOUT HINTS (for rendering):
 - Sub-points WITH scripture_refs will show scripture on left, notes on right
 - Sub-points WITHOUT scripture_refs will be full-width text
-- Each sub-point gets its own page
-- Numbered lists without sub-points go on one page with spacing between items
+- Each sub-point (A, B, C) gets its own page
+- Points with simple bullets (●, -, •) but NO lettered sub-points go on ONE page
+- Numbered/enumerated lists go on one page with spacing between items
+
+IMPORTANT STRUCTURE RULES:
+- Use "bullets" at the POINT level for simple bullet lists (●, -, •) WITHOUT letters
+- Use "numbered_items" at the POINT level for numbered/enumerated lists (1., 2., 3.)
+- Only use "sub_points" when there are LETTERED items like A, B, C
+- Points with just prose content use "content" field
+- Expanded lists (like "Ways We Lie" with 12 items) use "numbered_items"
 
 Return ONLY valid JSON matching this exact structure:
 {
@@ -57,13 +65,15 @@ Return ONLY valid JSON matching this exact structure:
     {
       "number": 1,
       "title": "string",
-      "content": "string or null",
+      "content": "string or null (prose content for the point)",
+      "bullets": ["simple bullet without letter", "another bullet"],
+      "numbered_items": ["First numbered item with explanation", "Second numbered item"],
       "sub_points": [
         {
           "label": "A",
           "title": "string or null",
-          "content": "string (the title/theme description after the label, e.g. 'We all struggle with our words')",
-          "bullets": ["first bullet point", "second bullet point", "third bullet point"],
+          "content": "string (the title/theme description after the label)",
+          "bullets": ["first bullet point", "second bullet point"],
           "scripture_verse": "specific verse(s) from main passage for this sub-point (e.g., 'James 3:2')",
           "scripture_refs": ["array of any additional scripture references mentioned"]
         }

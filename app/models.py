@@ -116,6 +116,8 @@ class SermonPoint(BaseModel):
     number: int = Field(..., description="Point number (1, 2, 3...)")
     title: str = Field(..., description="Main point title")
     content: str | None = Field(None, description="Content directly under the main point")
+    bullets: list[str] = Field(default_factory=list, description="Simple bullet points (not lettered sub-points)")
+    numbered_items: list[str] = Field(default_factory=list, description="Numbered/enumerated list items")
     sub_points: list[SermonSubPoint] = Field(default_factory=list)
     scripture_refs: list[str] = Field(default_factory=list, description="Scripture references for this point")
 

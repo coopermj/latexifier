@@ -190,7 +190,7 @@ async def generate_sermon_latex(
 ]
 % Serif font for scripture quotations (Computer Modern Roman)
 \newfontfamily\scripturefont{Latin Modern Roman}
-\newfontfamily\wordstudy{Latin Modern Roman}
+\newfontfamily\wordstudy{Times New Roman}
 \newfontfamily\greekfont{Times New Roman}
 \newfontfamily\josefin{Josefin Sans}
 \newfontfamily\commentaryfont{BanglaMN.ttf}[
@@ -338,7 +338,28 @@ def _render_point(point: SermonPoint, version: str) -> list[str]:
             lines.append(escape_latex(point.content))
             lines.append("")
 
-        # If there are scripture refs but no sub-points, render as list
+        # Render bullets if present (simple bullet lists without letters)
+        if point.bullets:
+            lines.append(r"\begin{itemize}")
+            lines.append(r"\setlength{\itemsep}{20pt}")
+            for bullet in point.bullets:
+                lines.append(rf"\item {escape_latex(bullet)}")
+            lines.append(r"\end{itemize}")
+
+        # Render numbered items if present (enumerated lists)
+        if point.numbered_items:
+            lines.append(r"\begin{enumerate}")
+            lines.append(r"\setlength{\itemsep}{20pt}")
+            for item in point.numbered_items:
+                # Check if item has bold title pattern like "Title: explanation"
+                if ": " in item:
+                    parts = item.split(": ", 1)
+                    lines.append(rf"\item \textbf{{{escape_latex(parts[0])}:}} {escape_latex(parts[1])}")
+                else:
+                    lines.append(rf"\item {escape_latex(item)}")
+            lines.append(r"\end{enumerate}")
+
+        # If there are scripture refs, render as list
         if point.scripture_refs:
             lines.append(r"\begin{itemize}")
             lines.append(r"\setlength{\itemsep}{20pt}")

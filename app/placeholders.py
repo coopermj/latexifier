@@ -449,8 +449,6 @@ def generate_strongs_appendix(strongs_numbers: set[str]) -> str:
 
     lines = [
         r"\newpage",
-        r"% Define font for Greek text",
-        r"\newfontfamily\greekfont{Noto Sans}[Script=Greek]",
         r"\section*{Greek Word Study}",
         r"\addcontentsline{toc}{section}{Greek Word Study}",
         r"",
