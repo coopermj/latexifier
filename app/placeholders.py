@@ -74,6 +74,7 @@ class PlaceholderSpec:
     reference: str
     version: ScriptureVersion
     options: ScriptureLookupOptions
+    nolinks: bool = False
 
 
 def _parse_bool(value: str) -> bool:
@@ -97,6 +98,7 @@ def _parse_spec(raw_spec: str) -> PlaceholderSpec:
         "verses": True,
         "footnotes": False,
         "copyright": True,
+        "nolinks": False,
     }
 
     if len(parts) > 1 and parts[1]:
@@ -124,6 +126,8 @@ def _parse_spec(raw_spec: str) -> PlaceholderSpec:
             options["footnotes"] = _parse_bool(value)
         elif key in {"copyright", "include_short_copyright"}:
             options["copyright"] = _parse_bool(value)
+        elif key in {"nolinks", "no_links"}:
+            options["nolinks"] = _parse_bool(value)
         else:
             raise ScripturePlaceholderError(f"Unknown option '{key}' in scripture placeholder.")
 
@@ -139,6 +143,7 @@ def _parse_spec(raw_spec: str) -> PlaceholderSpec:
         reference=reference,
         version=version,
         options=lookup_opts,
+        nolinks=options["nolinks"],
     )
 
 
@@ -164,6 +169,7 @@ def _format_scripture_body(
     text: str,
     include_verse_numbers: bool,
     include_footnotes: bool,
+    nolinks: bool = False,
 ) -> str:
     """
     Convert plain text with verse numbers into scripture.sty macros.
@@ -257,12 +263,15 @@ def _format_scripture_body(
     clean = net_verse_pattern.sub(net_verse_repl, clean)
 
     # Handle Strong's numbers: <st data-num="XXXX" class="">word</st> -> \hyperlink{strongs-XXXX}{word}
+    # If nolinks=True, just output the word without hyperlink (for paracol compatibility)
     strongs_pattern = re.compile(r'<st data-num="(\d+)"[^>]*>([^<]+)</st>')
 
     def strongs_repl(match: Match[str]) -> str:
         strongs_num = match.group(1)
         word = match.group(2)
         _collected_strongs.add(strongs_num)
+        if nolinks:
+            return word
         return f"\\hyperlink{{strongs-{strongs_num}}}{{{word}}}"
 
     clean = strongs_pattern.sub(strongs_repl, clean)
@@ -614,6 +623,7 @@ async def process_scripture_placeholders(
                 result.text,
                 spec.options.include_verse_numbers,
                 spec.options.include_footnotes,
+                spec.nolinks,
             )
             # Apply AI analysis to detect poetry and tag divine names
             analyzed = await _analyze_scripture_with_ai(
@@ -661,10 +671,7 @@ async def process_scripture_placeholders(
 
         appendices = []
 
-        # Add Strong's appendix if any Strong's numbers were collected
-        strongs = get_collected_strongs()
-        if strongs:
-            appendices.append(generate_strongs_appendix(strongs))
+        # Note: Strong's appendix is now generated in sermon_latex.py from NET Bible data
 
         # Add commentary appendix if requested and references were collected
         if include_commentary and commentary_sources:

@@ -3,7 +3,7 @@ import json
 import logging
 from pathlib import Path
 
-from .models import SermonOutline, SermonPoint, SermonSubPoint
+from .models import SermonOutline, SermonPoint, SermonSubPoint, Table
 from .commentary import CommentarySource, fetch_commentary_for_reference, CommentaryResult
 from .scripture import fetch_scripture, ScriptureVersion, ScriptureLookupOptions
 
@@ -40,9 +40,52 @@ def escape_latex(text: str) -> str:
     return text
 
 
-def scripture_placeholder(reference: str, version: str) -> str:
+def scripture_placeholder(reference: str, version: str, nolinks: bool = False) -> str:
     """Generate a scripture placeholder string."""
+    if nolinks:
+        return f"[[scripture:{reference}|{version}|nolinks=true]]"
     return f"[[scripture:{reference}|{version}]]"
+
+
+def _render_table(table: Table) -> list[str]:
+    """Render a table as LaTeX tabularx environment with text wrapping."""
+    lines = []
+
+    if not table.headers:
+        return lines
+
+    num_cols = len(table.headers)
+    # Use X columns for auto-width with text wrapping
+    col_spec = "|" + "X|" * num_cols
+
+    lines.append("")
+    if table.caption:
+        lines.append(rf"\textbf{{{escape_latex(table.caption)}}}")
+        lines.append(r"\vspace{0.3cm}")
+        lines.append("")
+
+    # Use tabularx with \textwidth for proper margins
+    lines.append(rf"\begin{{tabularx}}{{\textwidth}}{{{col_spec}}}")
+    lines.append(r"\hline")
+
+    # Header row (bold)
+    header_cells = [rf"\textbf{{{escape_latex(h)}}}" for h in table.headers]
+    lines.append(" & ".join(header_cells) + r" \\")
+    lines.append(r"\hline")
+
+    # Data rows
+    for row in table.rows:
+        # Pad row if needed
+        cells = list(row) + [""] * (num_cols - len(row))
+        escaped_cells = [escape_latex(c) for c in cells[:num_cols]]
+        lines.append(" & ".join(escaped_cells) + r" \\")
+        lines.append(r"\hline")
+
+    lines.append(r"\end{tabularx}")
+    lines.append(r"\vspace{0.5cm}")
+    lines.append("")
+
+    return lines
 
 
 def format_date(date_str: str | None) -> str:
@@ -66,7 +109,9 @@ async def generate_sermon_latex(
     subpoint_version: str = "NET",
     include_main_passage: bool = True,
     cover_image: str | None = None,
-    commentary_sources: list[str] | None = None
+    commentary_sources: list[str] | None = None,
+    include_bulletin: bool = False,
+    include_prayer_requests: bool = False
 ) -> str:
     """
     Generate LaTeX document from sermon outline.
@@ -78,6 +123,8 @@ async def generate_sermon_latex(
         include_main_passage: Whether to include full main passage text
         cover_image: Optional filename of cover image (must be in work directory)
         commentary_sources: List of commentary sources to include (mhc, calvincommentaries)
+        include_bulletin: Whether bulletin PDF is included (adds TOC entry and includes it)
+        include_prayer_requests: Whether prayer requests PDF is included (adds TOC entry and includes it)
 
     Returns:
         Complete LaTeX document as string
@@ -129,29 +176,39 @@ async def generate_sermon_latex(
 % Multi-column layout for main passage
 \usepackage{multicol}
 
+% Tables with auto-width columns
+\usepackage{tabularx}
+
+% Parallel columns that can break across pages
+\usepackage{paracol}
+
+% FontAwesome icons
+\usepackage{fontawesome5}
+
 % Microtypography
 \usepackage[protrusion=true,expansion=true,verbose=silent]{microtype}
 
 % PDF metadata / links
 \usepackage{hyperref}
 
+% Include external PDFs
+\usepackage{pdfpages}
+
 % Pandoc list helper
 \providecommand{\tightlist}{%
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}%
 }
 
-% Two-column scripture + notes (with gutter)
+% Two-column scripture + notes (using paracol for page breaks)
 \newcommand{\scripturebullets}[2]{%
-  \begin{samepage}
-  \noindent
-  \begin{minipage}[t]{0.46\textwidth}
+  \columnratio{0.48}
+  \begin{paracol}{2}
+    \raggedright
     #1
-  \end{minipage}%
-  \hspace{0.06\textwidth}%
-  \begin{minipage}[t]{0.46\textwidth}
+  \switchcolumn
+    \raggedright
     #2
-  \end{minipage}
-  \end{samepage}
+  \end{paracol}
 }
 
 % Colors
@@ -169,14 +226,15 @@ async def generate_sermon_latex(
   }%
 }
 
-% Page number style
+% Page number style with home icon and rule
 \fancypagestyle{mystyle}{%
   \fancyhf{}%
   \renewcommand\headrulewidth{0pt}%
+  \renewcommand\footrulewidth{0.4pt}%
+  \fancyfoot[L]{\hyperlink{titlepage}{\color{highlight}\faHome}}%
   \fancyfoot[R]{\thepage}%
-  \fancyfootoffset{2.1cm}%
 }
-\setlength{\footskip}{20pt}
+\setlength{\footskip}{8mm}
 
 % Fonts
 % Main document font - All Round Gothic (for sermon notes, not scripture)
@@ -244,7 +302,8 @@ async def generate_sermon_latex(
   filecolor={{Maroon}},
   citecolor={{Blue}},
   urlcolor={{highlight}},
-  pdfcreator={{LaTeX via pandoc}}
+  pdfcreator={{LaTeX via pandoc}},
+  breaklinks=true
 }}
 
 \title{{{title}}}
@@ -253,6 +312,7 @@ async def generate_sermon_latex(
 \date{{{date}}}
 
 \begin{{document}}
+\hypertarget{{titlepage}}{{}}
 \maketitle
 \pagestyle{{mystyle}}
 """)
@@ -264,6 +324,22 @@ async def generate_sermon_latex(
         lines.append(r"\begin{center}")
         lines.append(rf"\includegraphics[width=0.8\textwidth,height=0.5\textheight,keepaspectratio]{{{cover_image}}}")
         lines.append(r"\end{center}")
+
+    # Add table of contents
+    lines.append("")
+    lines.append(r"\vspace{1cm}")
+    lines.append(r"\begin{center}")
+    lines.append(r"{\josefin\large\textbf{Contents}}")
+    lines.append(r"\end{center}")
+    lines.append(r"\begin{center}")
+    lines.append(r"\begin{tabular}{l}")
+    lines.append(r"\hyperlink{sermonnotes}{Sermon Notes} \\[0.3cm]")
+    if include_bulletin:
+        lines.append(r"\hyperlink{bulletin}{Sunday Bulletin} \\[0.3cm]")
+    if include_prayer_requests:
+        lines.append(r"\hyperlink{prayer}{Prayer Requests} \\[0.3cm]")
+    lines.append(r"\end{tabular}")
+    lines.append(r"\end{center}")
 
     lines.append("")
     lines.append(r"\newpage{}")
@@ -277,6 +353,9 @@ async def generate_sermon_latex(
         lines.append("")
         lines.append(r"\newpage{}")
         lines.append("")
+
+    # Sermon notes hypertarget for ToC link
+    lines.append(r"\hypertarget{sermonnotes}{}")
 
     # Foundational principle as a section
     if outline.foundational_principle:
@@ -300,6 +379,12 @@ async def generate_sermon_latex(
     # Main points as sections
     for point in outline.points:
         lines.extend(_render_point(point, subpoint_version))
+
+    # Render any tables inline (no section break)
+    if outline.tables:
+        lines.append(r"\vspace{0.5cm}")
+        for table in outline.tables:
+            lines.extend(_render_table(table))
 
     # Greek Word Study appendix - fetch Strong's numbers from NET Bible
     strongs_numbers = set()
@@ -325,6 +410,20 @@ async def generate_sermon_latex(
             commentary_sources
         )
         lines.extend(commentary_lines)
+
+    # Include bulletin PDF if provided
+    if include_bulletin:
+        lines.append("")
+        lines.append(r"\newpage")
+        lines.append(r"\hypertarget{bulletin}{}")
+        lines.append(r"\includepdf[pages=-,pagecommand={\thispagestyle{mystyle}}]{bulletin.pdf}")
+
+    # Include prayer requests PDF if provided
+    if include_prayer_requests:
+        lines.append("")
+        lines.append(r"\newpage")
+        lines.append(r"\hypertarget{prayer}{}")
+        lines.append(r"\includepdf[pages=-,pagecommand={\thispagestyle{mystyle}}]{prayer_requests.pdf}")
 
     lines.append(r"\end{document}")
 
@@ -404,21 +503,21 @@ def _render_subpoint(sub: SermonSubPoint, version: str, section_title: str = "")
     has_scripture = sub.scripture_verse or sub.scripture_refs
 
     if has_scripture:
-        # Two-column layout: scripture on left, notes on right
+        # Build scripture content (nolinks=True for paracol compatibility)
         scripture_lines = []
         if sub.scripture_verse:
-            scripture_lines.append(scripture_placeholder(sub.scripture_verse, version))
+            scripture_lines.append(scripture_placeholder(sub.scripture_verse, version, nolinks=True))
         if sub.scripture_refs:
             for ref in sub.scripture_refs:
                 if scripture_lines:
                     scripture_lines.append("")
                     scripture_lines.append(r"\vspace{0.5cm}")
                     scripture_lines.append("")
-                scripture_lines.append(scripture_placeholder(ref, version))
+                scripture_lines.append(scripture_placeholder(ref, version, nolinks=True))
         scripture_lines.append(r"\vspace{2in}")
         scripture_content = "\n".join(scripture_lines)
 
-        # Build notes side
+        # Build notes content
         note_lines = []
         if sub.content:
             note_lines.append(escape_latex(sub.content))
@@ -434,7 +533,7 @@ def _render_subpoint(sub: SermonSubPoint, version: str, section_title: str = "")
         note_lines.append(r"\vspace{2in}")
         notes_content = "\n".join(note_lines)
 
-        # Combine with scripturebullets
+        # Two-column layout with paracol (links stripped for compatibility)
         lines.append(r"\scripturebullets")
         lines.append(r"{%")
         lines.append(scripture_content)
@@ -474,7 +573,7 @@ def _render_word_study_from_strongs(strongs_numbers: set[str]) -> list[str]:
 
     lines.append("")
     lines.append(r"\newpage{}")
-    lines.append(r"\newgeometry{left=20mm,right=25mm,top=15mm,bottom=15mm}")
+    lines.append(r"\newgeometry{left=10mm,right=15mm,top=15mm,bottom=10mm}")
     lines.append(r"\section{Greek Word Study}")
     lines.append("")
     lines.append(r"\wordstudy")
@@ -488,8 +587,8 @@ def _render_word_study_from_strongs(strongs_numbers: set[str]) -> list[str]:
 
         lines.append(r"\vspace{20pt}")
         lines.append("")
-        # Use wordstudy font for entire entry with itshape for italics
-        lines.append(rf"{{\wordstudy\textbf{{G{num}}}}} --- {{\greekfont {greek}}} ({{\wordstudy\itshape {translit}}})")
+        # Add hypertarget for linking from scripture text, with wordstudy font
+        lines.append(rf"\hypertarget{{strongs-{num}}}{{{{\wordstudy\textbf{{G{num}}}}}}} --- {{\greekfont {greek}}} ({{\wordstudy\itshape {translit}}})")
         lines.append(r"\\")
         lines.append(rf"{{\wordstudy\itshape {escape_latex(definition)}}}")
         lines.append("")
@@ -513,6 +612,8 @@ async def _render_commentary_appendix(
             sources.append(CommentarySource.MHC)
         elif src == "calvincommentaries":
             sources.append(CommentarySource.CALVIN)
+        elif src == "scofield":
+            sources.append(CommentarySource.SCOFIELD)
 
     if not sources:
         logger.info("No valid commentary sources after mapping")
@@ -536,7 +637,7 @@ async def _render_commentary_appendix(
     # Add appendix section with wider margins and different font
     lines.append("")
     lines.append(r"\newpage")
-    lines.append(r"\newgeometry{left=20mm,right=25mm,top=15mm,bottom=15mm}")
+    lines.append(r"\newgeometry{left=10mm,right=15mm,top=15mm,bottom=10mm}")
     lines.append(r"\section{Commentary}")
     lines.append(r"\commentaryfont\small")
     lines.append("")

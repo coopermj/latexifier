@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
 
@@ -110,6 +110,11 @@ class SermonSubPoint(BaseModel):
     scripture_verse: str | None = Field(None, description="Specific verse(s) from main passage for this sub-point")
     scripture_refs: list[str] = Field(default_factory=list, description="Scripture references mentioned")
 
+    @field_validator('bullets', 'scripture_refs', mode='before')
+    @classmethod
+    def none_to_list(cls, v):
+        return v if v is not None else []
+
 
 class SermonPoint(BaseModel):
     """A main sermon point with optional sub-points."""
@@ -121,6 +126,23 @@ class SermonPoint(BaseModel):
     sub_points: list[SermonSubPoint] = Field(default_factory=list)
     scripture_refs: list[str] = Field(default_factory=list, description="Scripture references for this point")
 
+    @field_validator('bullets', 'numbered_items', 'sub_points', 'scripture_refs', mode='before')
+    @classmethod
+    def none_to_list(cls, v):
+        return v if v is not None else []
+
+
+class Table(BaseModel):
+    """A simple table with headers and rows."""
+    headers: list[str] = Field(default_factory=list, description="Column headers")
+    rows: list[list[str]] = Field(default_factory=list, description="Table rows (list of cells)")
+    caption: str | None = Field(None, description="Optional table caption/title")
+
+    @field_validator('headers', 'rows', mode='before')
+    @classmethod
+    def none_to_list(cls, v):
+        return v if v is not None else []
+
 
 class SermonOutline(BaseModel):
     """Complete parsed sermon structure."""
@@ -129,7 +151,13 @@ class SermonOutline(BaseModel):
     foundational_principle: str | None = Field(None, description="Key principle or thesis statement")
     foundational_scripture: str | None = Field(None, description="Scripture for foundational principle")
     points: list[SermonPoint] = Field(default_factory=list)
+    tables: list[Table] = Field(default_factory=list, description="Tables found in the notes")
     all_scripture_refs: list[str] = Field(default_factory=list, description="All unique scripture references")
+
+    @field_validator('points', 'tables', 'all_scripture_refs', mode='before')
+    @classmethod
+    def none_to_list(cls, v):
+        return v if v is not None else []
 
 
 class CommentarySourceEnum(str, Enum):

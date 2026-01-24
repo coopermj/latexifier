@@ -20,6 +20,7 @@ Analyze the document and extract:
    - Lettered sub-points (A, B, C...) under each main point
    - Bullets (marked with ●, -, or •) under sub-points
 5. **Scripture References**: All Bible references mentioned in parentheses
+6. **Tables**: Any pipe-delimited tables (lines starting/containing | with multiple columns)
 
 CRITICAL STRUCTURE RULES:
 - Only create sub-points (A, B, C) when EXPLICITLY marked with letters in the original
@@ -42,6 +43,17 @@ LAYOUT HINTS (for rendering):
 - Each sub-point (A, B, C) gets its own page
 - Points with simple bullets (●, -, •) but NO lettered sub-points go on ONE page
 - Numbered/enumerated lists go on one page with spacing between items
+- Tables will be rendered as formatted tables in the output
+
+TABLE FORMAT:
+- Tables are marked with pipe characters (|) separating columns
+- First row with pipes is the header row
+- Example:
+  | Greek | Transliteration | Meaning |
+  | λόγος | logos | word |
+  | ἀγάπη | agape | love |
+- Extract each table into the "tables" array with headers and rows
+- Tables may have an optional caption/title on the line before them
 
 IMPORTANT STRUCTURE RULES:
 - Use "bullets" at the POINT level for simple bullet lists (●, -, •) WITHOUT letters
@@ -79,6 +91,13 @@ Return ONLY valid JSON matching this exact structure:
         }
       ],
       "scripture_refs": ["array of scripture references for this point"]
+    }
+  ],
+  "tables": [
+    {
+      "headers": ["Column 1", "Column 2", "Column 3"],
+      "rows": [["cell1", "cell2", "cell3"], ["cell4", "cell5", "cell6"]],
+      "caption": "optional table title or null"
     }
   ],
   "all_scripture_refs": ["array of ALL unique scripture references in the document"]
