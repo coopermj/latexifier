@@ -89,17 +89,23 @@ def _render_table(table: Table) -> list[str]:
 
 
 def format_date(date_str: str | None) -> str:
-    """Convert date to YYYY-MM-DD format if possible."""
+    """Convert date to long format like 'January 23, 2026'."""
     if not date_str:
         return ""
-    # Try to parse common formats like "1/11/26" or "01/11/2026"
     import re
+    from datetime import datetime
+
+    # Try to parse common formats like "1/11/26" or "01/11/2026"
     match = re.match(r'(\d{1,2})/(\d{1,2})/(\d{2,4})', date_str)
     if match:
         month, day, year = match.groups()
         if len(year) == 2:
             year = "20" + year
-        return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+        try:
+            dt = datetime(int(year), int(month), int(day))
+            return dt.strftime("%B %d, %Y")
+        except ValueError:
+            pass
     return date_str
 
 
@@ -282,7 +288,7 @@ async def generate_sermon_latex(
     {\josefin{\huge\textbf{\@title}}}\vspace{0.3cm}\newline
     {\josefin{\Large \@subtitle}}\newline
     \qtcoronation{\@author}\newline
-    \qtcoronation{\@date}%
+    {\josefin\@date}%
   \end{flushleft}%
   \egroup
 }
