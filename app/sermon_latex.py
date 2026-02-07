@@ -446,43 +446,63 @@ def _render_point(point: SermonPoint, version: str) -> list[str]:
         for sub in point.sub_points:
             lines.extend(_render_subpoint(sub, version, section_title))
     else:
-        # Point with no sub-points - render as full-width on its own page
+        # Point with no sub-points
         lines.append(r"\newpage{}")
         lines.append(rf"\section{{{section_title}}}")
         lines.append("")
 
+        # Build notes content
+        note_lines = []
         if point.content:
-            lines.append(escape_latex(point.content))
-            lines.append("")
+            note_lines.append(escape_latex(point.content))
+            note_lines.append("")
 
         # Render bullets if present (simple bullet lists without letters)
         if point.bullets:
-            lines.append(r"\begin{itemize}")
-            lines.append(r"\setlength{\itemsep}{20pt}")
+            note_lines.append(r"\begin{itemize}")
+            note_lines.append(r"\setlength{\itemsep}{10pt}")
             for bullet in point.bullets:
-                lines.append(rf"\item {escape_latex(bullet)}")
-            lines.append(r"\end{itemize}")
+                note_lines.append(rf"\item {escape_latex(bullet)}")
+            note_lines.append(r"\end{itemize}")
 
         # Render numbered items if present (enumerated lists)
         if point.numbered_items:
-            lines.append(r"\begin{enumerate}")
-            lines.append(r"\setlength{\itemsep}{20pt}")
+            note_lines.append(r"\begin{enumerate}")
+            note_lines.append(r"\setlength{\itemsep}{10pt}")
             for item in point.numbered_items:
                 # Check if item has bold title pattern like "Title: explanation"
                 if ": " in item:
                     parts = item.split(": ", 1)
-                    lines.append(rf"\item \textbf{{{escape_latex(parts[0])}:}} {escape_latex(parts[1])}")
+                    note_lines.append(rf"\item \textbf{{{escape_latex(parts[0])}:}} {escape_latex(parts[1])}")
                 else:
-                    lines.append(rf"\item {escape_latex(item)}")
-            lines.append(r"\end{enumerate}")
+                    note_lines.append(rf"\item {escape_latex(item)}")
+            note_lines.append(r"\end{enumerate}")
 
-        # If there are scripture refs, render as list
         if point.scripture_refs:
-            lines.append(r"\begin{itemize}")
-            lines.append(r"\setlength{\itemsep}{20pt}")
-            for ref in point.scripture_refs:
-                lines.append(rf"\item {escape_latex(ref)}")
-            lines.append(r"\end{itemize}")
+            # Two-column layout: scripture on left, notes on right
+            scripture_lines = []
+            for i, ref in enumerate(point.scripture_refs):
+                if i > 0:
+                    scripture_lines.append("")
+                    scripture_lines.append(r"\vspace{0.5cm}")
+                    scripture_lines.append("")
+                scripture_lines.append(scripture_placeholder(ref, version, nolinks=True))
+            scripture_lines.append(r"\vspace{2in}")
+            scripture_content = "\n".join(scripture_lines)
+
+            note_lines.append(r"\vspace{2in}")
+            notes_content = "\n".join(note_lines)
+
+            lines.append(r"\scripturebullets")
+            lines.append(r"{%")
+            lines.append(scripture_content)
+            lines.append(r"}%")
+            lines.append(r"{%")
+            lines.append(notes_content)
+            lines.append(r"}%")
+        else:
+            # Full-width layout (no scripture)
+            lines.extend(note_lines)
 
     return lines
 

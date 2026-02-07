@@ -23,11 +23,11 @@ Analyze the document and extract:
 6. **Tables**: Any pipe-delimited tables (lines starting/containing | with multiple columns)
 
 CRITICAL STRUCTURE RULES:
-- Only create sub-points (A, B, C) when EXPLICITLY marked with letters in the original
+- Create sub-points when items are EXPLICITLY marked with letters (A, B, C) OR numbers (1, 2, 3) under a section heading
+- When numbered items (1, 2, 3...) appear under a heading WITH scripture references in parentheses, use sub_points with label "1", "2", "3" etc. and extract each item's scripture refs into that sub_point's scripture_refs
 - Only create bullets when EXPLICITLY marked with ●, -, or • in the original
 - Keep related sentences together as "content" - do NOT split prose into separate bullets
-- If a section has no lettered sub-points, treat it as a simple point with content
-- If a section is just a numbered list (1, 2, 3...) without letters, each item is a separate main point
+- If a section is just a numbered list (1, 2, 3...) at the TOP level without a parent heading, each item is a separate main point
 - Sections that appear twice (brief then expanded) should be treated as SEPARATE main points
 - Preserve the EXACT structure from the original notes
 
@@ -38,11 +38,10 @@ For scripture references:
 - Keep the parenthetical reference in the content text as well
 
 LAYOUT HINTS (for rendering):
-- Sub-points WITH scripture_refs will show scripture on left, notes on right
+- Sub-points WITH scripture_refs will show scripture on left, notes on right (two-column)
 - Sub-points WITHOUT scripture_refs will be full-width text
-- Each sub-point (A, B, C) gets its own page
-- Points with simple bullets (●, -, •) but NO lettered sub-points go on ONE page
-- Numbered/enumerated lists go on one page with spacing between items
+- Each sub-point gets its own page (whether labeled A/B/C or 1/2/3)
+- Points with simple bullets (●, -, •) but NO sub-points go on ONE page
 - Tables will be rendered as formatted tables in the output
 
 TABLE FORMAT:
@@ -56,11 +55,11 @@ TABLE FORMAT:
 - Tables may have an optional caption/title on the line before them
 
 IMPORTANT STRUCTURE RULES:
-- Use "bullets" at the POINT level for simple bullet lists (●, -, •) WITHOUT letters
-- Use "numbered_items" at the POINT level for numbered/enumerated lists (1., 2., 3.)
-- Only use "sub_points" when there are LETTERED items like A, B, C
+- Use "bullets" at the POINT level for simple bullet lists (●, -, •) WITHOUT sub-points
+- Use "sub_points" when items are lettered (A, B, C) OR numbered (1, 2, 3) under a section heading — use the original label ("A" or "1") as the label field
+- IMPORTANT: When numbered items have parenthetical scripture references, ALWAYS use sub_points so each item gets its own page with scripture displayed alongside it
 - Points with just prose content use "content" field
-- Expanded lists (like "Ways We Lie" with 12 items) use "numbered_items"
+- Numbered items WITHOUT scripture references and WITHOUT a parent heading use "numbered_items"
 
 Return ONLY valid JSON matching this exact structure:
 {
@@ -82,12 +81,12 @@ Return ONLY valid JSON matching this exact structure:
       "numbered_items": ["First numbered item with explanation", "Second numbered item"],
       "sub_points": [
         {
-          "label": "A",
+          "label": "A or 1 (use original label from notes)",
           "title": "string or null",
           "content": "string (the title/theme description after the label)",
           "bullets": ["first bullet point", "second bullet point"],
           "scripture_verse": "specific verse(s) from main passage for this sub-point (e.g., 'James 3:2')",
-          "scripture_refs": ["array of any additional scripture references mentioned"]
+          "scripture_refs": ["scripture references mentioned in THIS specific sub-point only"]
         }
       ],
       "scripture_refs": ["array of scripture references for this point"]
