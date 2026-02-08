@@ -1,21 +1,20 @@
-"""Commentariat API client for fetching Biblical commentary."""
+"""Commentary lookups backed by the local commentariat SQLite database."""
 
 import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
 
-import httpx
+from app import commentariat_db
 
 logger = logging.getLogger(__name__)
-
-BASE_URL = "https://commentariat-production.up.railway.app"
 
 
 class CommentarySource(str, Enum):
     """Available commentary sources."""
     MHC = "mhc"  # Matthew Henry's Complete Commentary
     CALVIN = "calvincommentaries"  # Calvin's Collected Commentaries
+    SCOFIELD = "scofield"  # Scofield Reference Notes, 1917 Edition
 
 
 @dataclass
@@ -108,6 +107,14 @@ def clean_commentary_text(text: str) -> str:
     return text.strip()
 
 
+def _resolve_commentary(source: CommentarySource) -> tuple[int, str]:
+    """Return (commentary_id, display_name) for *source*, or raise."""
+    row = commentariat_db.get_commentary(source.value)
+    if row is None:
+        raise CommentaryLookupError(f"Commentary not found in DB: {source.value}")
+    return row["id"], row["name"]
+
+
 async def fetch_verse_commentary(
     source: CommentarySource,
     book: str,
@@ -119,42 +126,33 @@ async def fetch_verse_commentary(
 
     Returns None if no commentary available for this verse/source.
     """
-    url = f"{BASE_URL}/commentaries/{source.value}/{book}/{chapter}/{verse}"
-
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, timeout=30.0)
+        commentary_id, name = _resolve_commentary(source)
+        canonical_book = commentariat_db.normalize_book(book)
+        rows = commentariat_db.list_entries_for_verse(
+            commentary_id, canonical_book, chapter, verse,
+        )
 
-            if response.status_code == 404:
-                return None
-
-            response.raise_for_status()
-            data = response.json()
-
-            entries = [
-                CommentaryEntry(
-                    verse_start=e["verse_start"],
-                    verse_end=e["verse_end"],
-                    text=clean_commentary_text(e["text"])
-                )
-                for e in data.get("entries", [])
-            ]
-
-            if not entries:
-                return None
-
-            return CommentaryResult(
-                source=source,
-                source_name=data.get("commentary", {}).get("name", source.value),
-                book=data.get("book", book),
-                chapter=data.get("chapter", chapter),
-                verse=data.get("verse", verse),
-                entries=entries
+        entries = [
+            CommentaryEntry(
+                verse_start=r["verse_start"],
+                verse_end=r["verse_end"],
+                text=clean_commentary_text(r["text"]),
             )
-    except httpx.HTTPStatusError as exc:
-        logger.warning("Commentary lookup failed for %s %s:%s (%s): %s",
-                       book, chapter, verse, source.value, exc)
-        return None
+            for r in rows
+        ]
+
+        if not entries:
+            return None
+
+        return CommentaryResult(
+            source=source,
+            source_name=name,
+            book=canonical_book,
+            chapter=chapter,
+            verse=verse,
+            entries=entries,
+        )
     except Exception as exc:
         logger.warning("Commentary lookup error for %s %s:%s (%s): %s",
                        book, chapter, verse, source.value, exc)
@@ -171,42 +169,33 @@ async def fetch_chapter_commentary(
 
     Returns None if no commentary available for this chapter/source.
     """
-    url = f"{BASE_URL}/commentaries/{source.value}/{book}/{chapter}"
-
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, timeout=30.0)
+        commentary_id, name = _resolve_commentary(source)
+        canonical_book = commentariat_db.normalize_book(book)
+        rows = commentariat_db.list_entries_for_chapter(
+            commentary_id, canonical_book, chapter,
+        )
 
-            if response.status_code == 404:
-                return None
-
-            response.raise_for_status()
-            data = response.json()
-
-            entries = [
-                CommentaryEntry(
-                    verse_start=e["verse_start"],
-                    verse_end=e["verse_end"],
-                    text=clean_commentary_text(e["text"])
-                )
-                for e in data.get("entries", [])
-            ]
-
-            if not entries:
-                return None
-
-            return CommentaryResult(
-                source=source,
-                source_name=data.get("commentary", {}).get("name", source.value),
-                book=data.get("book", book),
-                chapter=data.get("chapter", chapter),
-                verse=None,
-                entries=entries
+        entries = [
+            CommentaryEntry(
+                verse_start=r["verse_start"],
+                verse_end=r["verse_end"],
+                text=clean_commentary_text(r["text"]),
             )
-    except httpx.HTTPStatusError as exc:
-        logger.warning("Commentary lookup failed for %s %s (%s): %s",
-                       book, chapter, source.value, exc)
-        return None
+            for r in rows
+        ]
+
+        if not entries:
+            return None
+
+        return CommentaryResult(
+            source=source,
+            source_name=name,
+            book=canonical_book,
+            chapter=chapter,
+            verse=None,
+            entries=entries,
+        )
     except Exception as exc:
         logger.warning("Commentary lookup error for %s %s (%s): %s",
                        book, chapter, source.value, exc)
