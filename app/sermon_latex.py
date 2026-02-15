@@ -382,11 +382,11 @@ async def generate_sermon_latex(
         lines.append(r"\vspace{2.2in}")
         lines.append("")
 
-    # Main points as sections
+    # Main points as sections (tables render inline within each point)
     for point in outline.points:
         lines.extend(_render_point(point, subpoint_version))
 
-    # Render any tables inline (no section break)
+    # Render any top-level tables not associated with a specific point
     if outline.tables:
         lines.append(r"\vspace{0.5cm}")
         for table in outline.tables:
@@ -445,6 +445,10 @@ def _render_point(point: SermonPoint, version: str) -> list[str]:
     if point.sub_points:
         for sub in point.sub_points:
             lines.extend(_render_subpoint(sub, version, section_title))
+        # Render any tables within this point after the sub-points
+        if point.tables:
+            for table in point.tables:
+                lines.extend(_render_table(table))
     else:
         # Point with no sub-points
         lines.append(r"\newpage{}")
@@ -503,6 +507,11 @@ def _render_point(point: SermonPoint, version: str) -> list[str]:
         else:
             # Full-width layout (no scripture)
             lines.extend(note_lines)
+
+        # Render any tables within this point
+        if point.tables:
+            for table in point.tables:
+                lines.extend(_render_table(table))
 
     return lines
 

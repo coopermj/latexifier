@@ -43,6 +43,7 @@ LAYOUT HINTS (for rendering):
 - Each sub-point gets its own page (whether labeled A/B/C or 1/2/3)
 - Points with simple bullets (●, -, •) but NO sub-points go on ONE page
 - Tables will be rendered as formatted tables in the output
+- IMPORTANT: Tables should be placed INSIDE the point where they appear in the notes, using that point's "tables" field. Only use the top-level "tables" if a table is not associated with any specific point.
 
 TABLE FORMAT:
 - Tables are marked with pipe characters (|) separating columns
@@ -89,16 +90,17 @@ Return ONLY valid JSON matching this exact structure:
           "scripture_refs": ["scripture references mentioned in THIS specific sub-point only"]
         }
       ],
-      "scripture_refs": ["array of scripture references for this point"]
+      "scripture_refs": ["array of scripture references for this point"],
+      "tables": [
+        {
+          "headers": ["Column 1", "Column 2", "Column 3"],
+          "rows": [["cell1", "cell2", "cell3"], ["cell4", "cell5", "cell6"]],
+          "caption": "optional table title or null"
+        }
+      ]
     }
   ],
-  "tables": [
-    {
-      "headers": ["Column 1", "Column 2", "Column 3"],
-      "rows": [["cell1", "cell2", "cell3"], ["cell4", "cell5", "cell6"]],
-      "caption": "optional table title or null"
-    }
-  ],
+  "tables": [],
   "all_scripture_refs": ["array of ALL unique scripture references in the document"]
 }'''
 

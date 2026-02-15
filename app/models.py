@@ -125,8 +125,9 @@ class SermonPoint(BaseModel):
     numbered_items: list[str] = Field(default_factory=list, description="Numbered/enumerated list items")
     sub_points: list[SermonSubPoint] = Field(default_factory=list)
     scripture_refs: list[str] = Field(default_factory=list, description="Scripture references for this point")
+    tables: list["Table"] = Field(default_factory=list, description="Tables that appear within this point")
 
-    @field_validator('bullets', 'numbered_items', 'sub_points', 'scripture_refs', mode='before')
+    @field_validator('bullets', 'numbered_items', 'sub_points', 'scripture_refs', 'tables', mode='before')
     @classmethod
     def none_to_list(cls, v):
         return v if v is not None else []
