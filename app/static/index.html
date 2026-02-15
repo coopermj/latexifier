@@ -74,7 +74,29 @@ Foundational Principle: Your words are the best indicator of your true spiritual
                         <input type="checkbox" id="commentary-calvin" value="calvincommentaries">
                         <span>Calvin's Commentaries</span>
                     </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="commentary-scofield" value="scofield">
+                        <span>Scofield Reference Notes</span>
+                    </label>
                 </div>
+            </div>
+
+            <div class="form-group">
+                <label for="bulletin-pdf">Sunday Bulletin (optional PDF)</label>
+                <div class="file-input-wrapper" id="bulletin-wrapper">
+                    <input type="file" id="bulletin-pdf" accept="application/pdf">
+                    <span id="bulletin-file-name">No file chosen</span>
+                </div>
+                <button type="button" id="clear-bulletin" class="clear-btn hidden">Remove</button>
+            </div>
+
+            <div class="form-group">
+                <label for="prayer-pdf">Prayer Requests (optional PDF)</label>
+                <div class="file-input-wrapper" id="prayer-wrapper">
+                    <input type="file" id="prayer-pdf" accept="application/pdf">
+                    <span id="prayer-file-name">No file chosen</span>
+                </div>
+                <button type="button" id="clear-prayer" class="clear-btn hidden">Remove</button>
             </div>
 
             <button type="submit" id="submit-btn">

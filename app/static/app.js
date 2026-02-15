@@ -25,6 +25,8 @@ const commentaryCalvin = document.getElementById('commentary-calvin');
 
 // State
 let coverImageBase64 = null;
+let bulletinPdfBase64 = null;
+let prayerPdfBase64 = null;
 
 // Check if already authenticated (has valid session cookie)
 async function checkAuth() {
@@ -102,10 +104,14 @@ logoutBtn.addEventListener('click', async () => {
     }
 
     coverImageBase64 = null;
+    bulletinPdfBase64 = null;
+    prayerPdfBase64 = null;
     notesInput.value = '';
     commentaryMhc.checked = false;
     commentaryCalvin.checked = false;
     clearImagePreview();
+    clearBulletinPdf();
+    clearPrayerPdf();
     hideResults();
     showPasswordModal();
 });
@@ -164,6 +170,78 @@ function clearImagePreview() {
     coverImageBase64 = null;
 }
 
+// Bulletin PDF Handling
+const bulletinInput = document.getElementById('bulletin-pdf');
+const bulletinFileName = document.getElementById('bulletin-file-name');
+const clearBulletinBtn = document.getElementById('clear-bulletin');
+
+document.getElementById('bulletin-wrapper').addEventListener('click', () => {
+    bulletinInput.click();
+});
+
+bulletinInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) {
+        clearBulletinPdf();
+        return;
+    }
+    bulletinFileName.textContent = file.name;
+    try {
+        bulletinPdfBase64 = await readFileAsBase64(file);
+        clearBulletinBtn.classList.remove('hidden');
+    } catch (error) {
+        console.error('Failed to read bulletin PDF:', error);
+        clearBulletinPdf();
+    }
+});
+
+clearBulletinBtn.addEventListener('click', () => {
+    clearBulletinPdf();
+});
+
+function clearBulletinPdf() {
+    bulletinInput.value = '';
+    bulletinFileName.textContent = 'No file chosen';
+    bulletinPdfBase64 = null;
+    clearBulletinBtn.classList.add('hidden');
+}
+
+// Prayer Requests PDF Handling
+const prayerInput = document.getElementById('prayer-pdf');
+const prayerFileName = document.getElementById('prayer-file-name');
+const clearPrayerBtn = document.getElementById('clear-prayer');
+
+document.getElementById('prayer-wrapper').addEventListener('click', () => {
+    prayerInput.click();
+});
+
+prayerInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) {
+        clearPrayerPdf();
+        return;
+    }
+    prayerFileName.textContent = file.name;
+    try {
+        prayerPdfBase64 = await readFileAsBase64(file);
+        clearPrayerBtn.classList.remove('hidden');
+    } catch (error) {
+        console.error('Failed to read prayer PDF:', error);
+        clearPrayerPdf();
+    }
+});
+
+clearPrayerBtn.addEventListener('click', () => {
+    clearPrayerPdf();
+});
+
+function clearPrayerPdf() {
+    prayerInput.value = '';
+    prayerFileName.textContent = 'No file chosen';
+    prayerPdfBase64 = null;
+    clearPrayerBtn.classList.add('hidden');
+}
+
 // Form Submit
 sermonForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -183,8 +261,10 @@ sermonForm.addEventListener('submit', async (e) => {
     const commentaries = [];
     const mhcCheckbox = document.getElementById('commentary-mhc');
     const calvinCheckbox = document.getElementById('commentary-calvin');
+    const scofieldCheckbox = document.getElementById('commentary-scofield');
     if (mhcCheckbox && mhcCheckbox.checked) commentaries.push(mhcCheckbox.value);
     if (calvinCheckbox && calvinCheckbox.checked) commentaries.push(calvinCheckbox.value);
+    if (scofieldCheckbox && scofieldCheckbox.checked) commentaries.push(scofieldCheckbox.value);
 
     try {
         const response = await fetch('/web/generate', {
@@ -193,7 +273,9 @@ sermonForm.addEventListener('submit', async (e) => {
             body: JSON.stringify({
                 notes: notes,
                 image: coverImageBase64,
-                commentaries: commentaries
+                commentaries: commentaries,
+                bulletin_pdf: bulletinPdfBase64,
+                prayer_pdf: prayerPdfBase64
             }),
             credentials: 'include'
         });

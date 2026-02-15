@@ -62,6 +62,8 @@ class GenerateRequest(BaseModel):
     notes: str
     image: str | None = None  # Base64 encoded image
     commentaries: list[str] = []  # Commentary sources: mhc, calvincommentaries
+    bulletin_pdf: str | None = None  # Base64 encoded bulletin PDF
+    prayer_pdf: str | None = None  # Base64 encoded prayer requests PDF
 
 
 class GenerateResponse(BaseModel):
@@ -173,6 +175,32 @@ async def generate_sermon_pdf(
             cover_image_filename = None
             image_data = None
 
+    # Handle bulletin PDF if provided
+    bulletin_data = None
+    if request.bulletin_pdf:
+        try:
+            bulletin_data = base64.b64decode(request.bulletin_pdf)
+            # Verify it's a PDF
+            if not bulletin_data[:4] == b'%PDF':
+                logger.warning("Bulletin file is not a valid PDF")
+                bulletin_data = None
+        except Exception as exc:
+            logger.warning("Failed to decode bulletin PDF: %s", exc)
+            bulletin_data = None
+
+    # Handle prayer requests PDF if provided
+    prayer_data = None
+    if request.prayer_pdf:
+        try:
+            prayer_data = base64.b64decode(request.prayer_pdf)
+            # Verify it's a PDF
+            if not prayer_data[:4] == b'%PDF':
+                logger.warning("Prayer requests file is not a valid PDF")
+                prayer_data = None
+        except Exception as exc:
+            logger.warning("Failed to decode prayer requests PDF: %s", exc)
+            prayer_data = None
+
     # Generate LaTeX
     logger.info("Generating LaTeX with commentary sources: %s", request.commentaries)
     try:
@@ -182,7 +210,9 @@ async def generate_sermon_pdf(
             subpoint_version="NET",
             include_main_passage=True,
             cover_image=cover_image_filename,
-            commentary_sources=request.commentaries
+            commentary_sources=request.commentaries,
+            include_bulletin=bulletin_data is not None,
+            include_prayer_requests=prayer_data is not None
         )
     except Exception as exc:
         logger.exception("LaTeX generation failed")
@@ -190,6 +220,13 @@ async def generate_sermon_pdf(
 
     # Compile to PDF
     try:
+        # Build supplementary files dict
+        supplementary_pdfs = {}
+        if bulletin_data:
+            supplementary_pdfs["bulletin.pdf"] = bulletin_data
+        if prayer_data:
+            supplementary_pdfs["prayer_requests.pdf"] = prayer_data
+
         # If we have a cover image, we need to handle it specially
         # The compiler copies files to a temp directory, so we need to inject the image
         processed_tex = latex_content  # Default to unprocessed
@@ -198,11 +235,15 @@ async def generate_sermon_pdf(
             pdf_bytes, log, processed_tex = await _compile_with_image(
                 latex_content,
                 cover_image_filename,
-                image_data
+                image_data,
+                supplementary_pdfs=supplementary_pdfs
             )
         else:
             # For non-image case, also get processed tex
-            pdf_bytes, log, processed_tex = await _compile_without_image(latex_content)
+            pdf_bytes, log, processed_tex = await _compile_without_image(
+                latex_content,
+                supplementary_pdfs=supplementary_pdfs
+            )
 
         # Save PDF and tex, get URLs
         # Use sermon title as filename (sanitize for filesystem)
@@ -226,7 +267,10 @@ async def generate_sermon_pdf(
         return GenerateResponse(success=False, error=f"Compilation error: {exc}")
 
 
-async def _compile_without_image(latex_content: str) -> tuple[bytes, str, str]:
+async def _compile_without_image(
+    latex_content: str,
+    supplementary_pdfs: dict[str, bytes] | None = None
+) -> tuple[bytes, str, str]:
     """Compile LaTeX without cover image.
 
     Returns: (pdf_bytes, log_output, processed_tex_content)
@@ -256,6 +300,12 @@ async def _compile_without_image(latex_content: str) -> tuple[bytes, str, str]:
         if fonts_dir.exists():
             for font_file in fonts_dir.glob("*"):
                 shutil.copy(font_file, work_dir / font_file.name)
+
+        # Write supplementary PDFs
+        if supplementary_pdfs:
+            for filename, pdf_data in supplementary_pdfs.items():
+                pdf_path = work_dir / filename
+                pdf_path.write_bytes(pdf_data)
 
         # Process scripture placeholders
         await process_scripture_placeholders(work_dir, "sermon.tex")
@@ -303,7 +353,8 @@ async def _compile_without_image(latex_content: str) -> tuple[bytes, str, str]:
 async def _compile_with_image(
     latex_content: str,
     image_filename: str,
-    image_data: bytes
+    image_data: bytes,
+    supplementary_pdfs: dict[str, bytes] | None = None
 ) -> tuple[bytes, str, str]:
     """Compile LaTeX with cover image injected into work directory.
 
@@ -338,6 +389,12 @@ async def _compile_with_image(
         if fonts_dir.exists():
             for font_file in fonts_dir.glob("*"):
                 shutil.copy(font_file, work_dir / font_file.name)
+
+        # Write supplementary PDFs
+        if supplementary_pdfs:
+            for filename, pdf_data in supplementary_pdfs.items():
+                pdf_path = work_dir / filename
+                pdf_path.write_bytes(pdf_data)
 
         # Process scripture placeholders
         await process_scripture_placeholders(work_dir, "sermon.tex")

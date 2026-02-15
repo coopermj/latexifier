@@ -39,7 +39,7 @@ Include your API key in the `X-API-Key` header.
     docs_url="/docs",
     redoc_url="/redoc",
     servers=[
-        {"url": "https://latexifier-production.up.railway.app", "description": "Production server"}
+        {"url": "http://localhost:8000", "description": "Local development server"}
     ]
 )
 
