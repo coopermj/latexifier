@@ -28,3 +28,7 @@ Thumbs.db
 *.aux
 *.log
 *.out
+
+# Generated LaTeX output files
+sermon_output.tex
+telling_the_truth.tex
