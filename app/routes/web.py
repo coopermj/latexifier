@@ -58,12 +58,49 @@ class AuthResponse(BaseModel):
     valid: bool
 
 
+class ExtractCandidateEntry(BaseModel):
+    verse_start: int
+    verse_end: int | None = None
+    text: str
+
+
+class ExtractCandidateSource(BaseModel):
+    source_name: str
+    entries: list[ExtractCandidateEntry]
+
+
+class ExtractRequest(BaseModel):
+    notes: str
+    image: str | None = None
+    commentaries: list[str] = []
+
+
+class ExtractResponse(BaseModel):
+    success: bool
+    outline: dict | None = None
+    candidates: dict[str, ExtractCandidateSource] = {}
+    error: str | None = None
+
+
+class SelectedCommentaryEntry(BaseModel):
+    verse_start: int
+    verse_end: int | None = None
+    text: str
+
+
+class SelectedCommentaryResult(BaseModel):
+    source_name: str
+    entries: list[SelectedCommentaryEntry]
+
+
 class GenerateRequest(BaseModel):
     notes: str
     image: str | None = None  # Base64 encoded image
     commentaries: list[str] = []  # Commentary sources: mhc, calvincommentaries
     bulletin_pdf: str | None = None  # Base64 encoded bulletin PDF
     prayer_pdf: str | None = None  # Base64 encoded prayer requests PDF
+    outline: dict | None = None
+    commentary_overrides: list[SelectedCommentaryResult] = []
 
 
 class GenerateResponse(BaseModel):
