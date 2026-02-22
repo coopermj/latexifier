@@ -116,6 +116,7 @@ async def generate_sermon_latex(
     include_main_passage: bool = True,
     cover_image: str | None = None,
     commentary_sources: list[str] | None = None,
+    commentary_overrides: list[CommentaryResult] | None = None,
     include_bulletin: bool = False,
     include_prayer_requests: bool = False
 ) -> str:
@@ -410,10 +411,11 @@ async def generate_sermon_latex(
         lines.extend(_render_word_study_from_strongs(strongs_numbers))
 
     # Commentary appendix
-    if commentary_sources:
+    if commentary_sources or commentary_overrides is not None:
         commentary_lines = await _render_commentary_appendix(
             main_passage,
-            commentary_sources
+            commentary_sources or [],
+            preloaded=commentary_overrides,
         )
         lines.extend(commentary_lines)
 
@@ -634,7 +636,8 @@ def _render_word_study_from_strongs(strongs_numbers: set[str]) -> list[str]:
 
 async def _render_commentary_appendix(
     main_passage: str,
-    commentary_sources: list[str]
+    commentary_sources: list[str],
+    preloaded: list[CommentaryResult] | None = None,
 ) -> list[str]:
     """Render commentary appendix section."""
     lines = []
@@ -650,20 +653,23 @@ async def _render_commentary_appendix(
         elif src == "scofield":
             sources.append(CommentarySource.SCOFIELD)
 
-    if not sources:
-        logger.info("No valid commentary sources after mapping")
-        return lines
+    if preloaded is not None:
+        commentaries = preloaded
+    else:
+        if not sources:
+            logger.info("No valid commentary sources after mapping")
+            return lines
 
-    # Fetch commentary for the main passage from each source
-    commentaries: list[CommentaryResult] = []
-    for source in sources:
-        logger.info("Fetching commentary from %s for %s", source.value, main_passage)
-        result = await fetch_commentary_for_reference(main_passage, source)
-        if result:
-            logger.info("Got commentary result with %d entries", len(result.entries))
-            commentaries.append(result)
-        else:
-            logger.warning("No commentary result from %s", source.value)
+        # Fetch commentary for the main passage from each source
+        commentaries: list[CommentaryResult] = []
+        for source in sources:
+            logger.info("Fetching commentary from %s for %s", source.value, main_passage)
+            result = await fetch_commentary_for_reference(main_passage, source)
+            if result:
+                logger.info("Got commentary result with %d entries", len(result.entries))
+                commentaries.append(result)
+            else:
+                logger.warning("No commentary result from %s", source.value)
 
     if not commentaries:
         logger.info("No commentaries returned from any source")
