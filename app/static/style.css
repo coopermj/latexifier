@@ -517,6 +517,7 @@ input[type="file"] {
     align-items: baseline;
     gap: 0.5rem;
     padding: 0.5rem 0;
+    margin-bottom: 0;
     border-top: 1px solid #f0f0f0;
     cursor: pointer;
     font-weight: normal;
