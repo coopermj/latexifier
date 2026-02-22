@@ -235,15 +235,18 @@ async def generate_sermon_pdf(
     if not request.notes or not request.notes.strip():
         return GenerateResponse(success=False, error="No sermon notes provided")
 
-    # Extract outline from text using LLM
-    try:
-        outline = await extract_sermon_outline_from_text(request.notes)
-    except LLMError as exc:
-        logger.error("LLM extraction failed: %s", exc)
-        return GenerateResponse(success=False, error=str(exc))
-    except Exception as exc:
-        logger.exception("Unexpected error during extraction")
-        return GenerateResponse(success=False, error=f"Failed to parse notes: {exc}")
+    # Use pre-extracted outline if provided, otherwise extract via LLM
+    if request.outline:
+        outline = request.outline
+    else:
+        try:
+            outline = await extract_sermon_outline_from_text(request.notes)
+        except LLMError as exc:
+            logger.error("LLM extraction failed: %s", exc)
+            return GenerateResponse(success=False, error=str(exc))
+        except Exception as exc:
+            logger.exception("Unexpected error during extraction")
+            return GenerateResponse(success=False, error=f"Failed to parse notes: {exc}")
 
     # Handle cover image if provided
     cover_image_filename = None
@@ -296,6 +299,27 @@ async def generate_sermon_pdf(
             logger.warning("Failed to decode prayer requests PDF: %s", exc)
             prayer_data = None
 
+    # Build pre-selected commentary results if provided
+    preloaded_commentary = None
+    if request.commentary_overrides:
+        from ..commentary import CommentaryResult, CommentarySource, CommentaryEntry
+        preloaded_commentary = []
+        for item in request.commentary_overrides:
+            entries = [
+                CommentaryEntry(
+                    verse_start=e.verse_start,
+                    verse_end=e.verse_end if e.verse_end is not None else e.verse_start,
+                    text=e.text,
+                )
+                for e in item.entries
+            ]
+            preloaded_commentary.append(CommentaryResult(
+                source=CommentarySource.MHC,  # value unused in rendering
+                source_name=item.source_name,
+                book="", chapter=0, verse=None,
+                entries=entries,
+            ))
+
     # Generate LaTeX
     logger.info("Generating LaTeX with commentary sources: %s", request.commentaries)
     try:
@@ -305,7 +329,8 @@ async def generate_sermon_pdf(
             subpoint_version="NET",
             include_main_passage=True,
             cover_image=cover_image_filename,
-            commentary_sources=request.commentaries,
+            commentary_sources=request.commentaries if not preloaded_commentary else [],
+            commentary_overrides=preloaded_commentary,
             include_bulletin=bulletin_data is not None,
             include_prayer_requests=prayer_data is not None
         )
