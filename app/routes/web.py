@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from ..compiler import CompilationError
 from ..config import get_settings
 from ..llm import extract_sermon_outline_from_text, LLMError
+from ..models import SermonOutline
 from ..sermon_latex import generate_sermon_latex
 from ..storage import save_pdf
 
@@ -58,15 +59,20 @@ class AuthResponse(BaseModel):
     valid: bool
 
 
-class ExtractCandidateEntry(BaseModel):
+class CommentaryEntryModel(BaseModel):
     verse_start: int
     verse_end: int | None = None
     text: str
 
 
-class ExtractCandidateSource(BaseModel):
+class CommentarySourceModel(BaseModel):
     source_name: str
-    entries: list[ExtractCandidateEntry]
+    entries: list[CommentaryEntryModel]
+
+
+# Aliases for semantic clarity in each context
+ExtractCandidateEntry = CommentaryEntryModel
+ExtractCandidateSource = CommentarySourceModel
 
 
 class ExtractRequest(BaseModel):
@@ -77,20 +83,14 @@ class ExtractRequest(BaseModel):
 
 class ExtractResponse(BaseModel):
     success: bool
-    outline: dict | None = None
+    outline: SermonOutline | None = None
     candidates: dict[str, ExtractCandidateSource] = {}
     error: str | None = None
 
 
-class SelectedCommentaryEntry(BaseModel):
-    verse_start: int
-    verse_end: int | None = None
-    text: str
-
-
-class SelectedCommentaryResult(BaseModel):
-    source_name: str
-    entries: list[SelectedCommentaryEntry]
+# Aliases for semantic clarity in each context
+SelectedCommentaryEntry = CommentaryEntryModel
+SelectedCommentaryResult = CommentarySourceModel
 
 
 class GenerateRequest(BaseModel):
@@ -99,8 +99,8 @@ class GenerateRequest(BaseModel):
     commentaries: list[str] = []  # Commentary sources: mhc, calvincommentaries
     bulletin_pdf: str | None = None  # Base64 encoded bulletin PDF
     prayer_pdf: str | None = None  # Base64 encoded prayer requests PDF
-    outline: dict | None = None
-    commentary_overrides: list[SelectedCommentaryResult] = []
+    outline: SermonOutline | None = None            # pre-extracted outline (skips LLM if provided)
+    commentary_overrides: list[SelectedCommentaryResult] = []  # user-selected commentary entries
 
 
 class GenerateResponse(BaseModel):
