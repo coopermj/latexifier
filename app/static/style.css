@@ -273,7 +273,7 @@ input[type="file"] {
 }
 
 /* Submit Button */
-#submit-btn {
+#extract-btn {
     width: 100%;
     padding: 1rem;
     font-size: 1.125rem;
@@ -290,11 +290,11 @@ input[type="file"] {
     gap: 0.5rem;
 }
 
-#submit-btn:hover:not(:disabled) {
+#extract-btn:hover:not(:disabled) {
     background: #600060;
 }
 
-#submit-btn:disabled {
+#extract-btn:disabled {
     background: #999;
     cursor: not-allowed;
 }
