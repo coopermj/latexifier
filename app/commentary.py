@@ -28,10 +28,10 @@ class CommentaryEntry:
 @dataclass
 class CommentaryResult:
     """Result from a commentary lookup."""
-    source: CommentarySource
+    source: CommentarySource | None
     source_name: str
-    book: str
-    chapter: int
+    book: str | None
+    chapter: int | None
     verse: int | None
     entries: list[CommentaryEntry]
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Cookie, Response
 from pydantic import BaseModel
 
-from ..commentary import CommentarySource, fetch_commentary_for_reference
+from ..commentary import CommentarySource, CommentaryResult, CommentaryEntry, fetch_commentary_for_reference
 from ..compiler import CompilationError
 from ..config import get_settings
 from ..llm import extract_sermon_outline_from_text, LLMError
@@ -302,7 +302,6 @@ async def generate_sermon_pdf(
     # Build pre-selected commentary results if provided
     preloaded_commentary = None
     if request.commentary_overrides:
-        from ..commentary import CommentaryResult, CommentarySource, CommentaryEntry
         preloaded_commentary = []
         for item in request.commentary_overrides:
             entries = [
@@ -314,9 +313,9 @@ async def generate_sermon_pdf(
                 for e in item.entries
             ]
             preloaded_commentary.append(CommentaryResult(
-                source=CommentarySource.MHC,  # value unused in rendering
+                source=None,
                 source_name=item.source_name,
-                book="", chapter=0, verse=None,
+                book=None, chapter=None, verse=None,
                 entries=entries,
             ))
 

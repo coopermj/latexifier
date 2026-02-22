@@ -69,3 +69,4 @@ def test_generate_passes_overrides_to_sermon_latex():
         assert call_kwargs.get("commentary_overrides") is not None
         assert len(call_kwargs["commentary_overrides"]) == 1
         assert call_kwargs["commentary_overrides"][0].source_name == "Matthew Henry"
+        assert call_kwargs.get("commentary_sources") == []
