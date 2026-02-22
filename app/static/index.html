@@ -26,96 +26,111 @@
             <button id="logout-btn" class="logout-btn">Logout</button>
         </header>
 
-        <form id="sermon-form">
-            <div class="form-group">
-                <label for="notes">Sermon Notes</label>
-                <textarea
-                    id="notes"
-                    placeholder="Paste your sermon notes here...
+        <!-- Step Indicator -->
+        <div class="step-indicator">
+            <div class="step active" id="step-ind-1"><span class="step-num">1</span> Input</div>
+            <div class="step-connector"></div>
+            <div class="step" id="step-ind-2"><span class="step-num">2</span> Review</div>
+            <div class="step-connector"></div>
+            <div class="step" id="step-ind-3"><span class="step-num">3</span> Done</div>
+        </div>
 
-Example format:
-Taming the Tongue
-Tim Cochrell | 1/11/26
-James 3:1-12
-
-Foundational Principle: Your words are the best indicator of your true spiritual condition and a window into your worship. (James 1:26)
-
-1. Power to Direct Your Life
-   A. We All Stumble
-      - We all struggle with our words because of the sin in our hearts.
-      - There are no exceptions!
-   B. The Reins and the Rudder
-      - Whoever controls the bit, controls the beast.
-      - Our words reflect the desires of our hearts..."
-                    required
-                ></textarea>
-            </div>
-
-            <div class="form-group">
-                <label for="cover-image">Cover Image (optional)</label>
-                <div class="file-input-wrapper">
-                    <input type="file" id="cover-image" accept="image/png,image/jpeg,image/webp">
-                    <span id="file-name">No file chosen</span>
+        <!-- Step 1: Input -->
+        <div id="step-1">
+            <form id="sermon-form">
+                <div class="form-group">
+                    <label for="notes">Sermon Notes</label>
+                    <textarea id="notes" placeholder="Paste your sermon notes here..." required></textarea>
                 </div>
-                <div id="image-preview" class="image-preview hidden">
-                    <img id="preview-img" alt="Cover preview">
-                    <button type="button" id="clear-image" class="clear-btn">Remove</button>
+
+                <div class="form-group">
+                    <label for="cover-image">Cover Image (optional)</label>
+                    <div class="file-input-wrapper" id="cover-wrapper">
+                        <input type="file" id="cover-image" accept="image/png,image/jpeg,image/webp">
+                        <span id="file-name">No file chosen</span>
+                    </div>
+                    <div id="image-preview" class="image-preview hidden">
+                        <img id="preview-img" alt="Cover preview">
+                        <button type="button" id="clear-image" class="clear-btn">Remove</button>
+                    </div>
                 </div>
-            </div>
 
-            <div class="form-group">
-                <label>Include Commentary (optional)</label>
-                <div class="checkbox-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="commentary-mhc" value="mhc">
-                        <span>Matthew Henry's Commentary</span>
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="commentary-calvin" value="calvincommentaries">
-                        <span>Calvin's Commentaries</span>
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="commentary-scofield" value="scofield">
-                        <span>Scofield Reference Notes</span>
-                    </label>
+                <div class="form-group">
+                    <label>Commentary Sources (optional)</label>
+                    <div class="checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-mhc" value="mhc">
+                            <span>Matthew Henry's Commentary</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-calvin" value="calvincommentaries">
+                            <span>Calvin's Commentaries</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-scofield" value="scofield">
+                            <span>Scofield Reference Notes</span>
+                        </label>
+                    </div>
                 </div>
-            </div>
 
-            <div class="form-group">
-                <label for="bulletin-pdf">Sunday Bulletin (optional PDF)</label>
-                <div class="file-input-wrapper" id="bulletin-wrapper">
-                    <input type="file" id="bulletin-pdf" accept="application/pdf">
-                    <span id="bulletin-file-name">No file chosen</span>
+                <div class="form-group">
+                    <label for="bulletin-pdf">Sunday Bulletin (optional PDF)</label>
+                    <div class="file-input-wrapper" id="bulletin-wrapper">
+                        <input type="file" id="bulletin-pdf" accept="application/pdf">
+                        <span id="bulletin-file-name">No file chosen</span>
+                    </div>
+                    <button type="button" id="clear-bulletin" class="clear-btn hidden">Remove</button>
                 </div>
-                <button type="button" id="clear-bulletin" class="clear-btn hidden">Remove</button>
-            </div>
 
-            <div class="form-group">
-                <label for="prayer-pdf">Prayer Requests (optional PDF)</label>
-                <div class="file-input-wrapper" id="prayer-wrapper">
-                    <input type="file" id="prayer-pdf" accept="application/pdf">
-                    <span id="prayer-file-name">No file chosen</span>
+                <div class="form-group">
+                    <label for="prayer-pdf">Prayer Requests (optional PDF)</label>
+                    <div class="file-input-wrapper" id="prayer-wrapper">
+                        <input type="file" id="prayer-pdf" accept="application/pdf">
+                        <span id="prayer-file-name">No file chosen</span>
+                    </div>
+                    <button type="button" id="clear-prayer" class="clear-btn hidden">Remove</button>
                 </div>
-                <button type="button" id="clear-prayer" class="clear-btn hidden">Remove</button>
+
+                <button type="submit" id="extract-btn">
+                    <span id="extract-btn-text">Extract Outline</span>
+                    <span id="extract-btn-spinner" class="spinner hidden"></span>
+                </button>
+            </form>
+
+            <div id="extract-error" class="result result-error hidden">
+                <h3>Error</h3>
+                <p id="extract-error-message"></p>
             </div>
+        </div>
 
-            <button type="submit" id="submit-btn">
-                <span id="btn-text">Generate PDF</span>
-                <span id="btn-spinner" class="spinner hidden"></span>
-            </button>
-        </form>
+        <!-- Step 2: Review -->
+        <div id="step-2" class="hidden">
+            <div id="outline-summary" class="outline-summary"></div>
+            <div id="commentary-cards"></div>
+            <div id="review-error" class="result result-error hidden">
+                <h3>Error</h3>
+                <p id="review-error-message"></p>
+            </div>
+            <div class="wizard-nav">
+                <button type="button" id="back-btn" class="back-btn">← Back</button>
+                <button type="button" id="generate-btn">
+                    <span id="generate-btn-text">Generate PDF</span>
+                    <span id="generate-btn-spinner" class="spinner hidden"></span>
+                </button>
+            </div>
+        </div>
 
-        <div id="result" class="result hidden">
-            <div id="result-success" class="result-success hidden">
+        <!-- Step 3: Done -->
+        <div id="step-3" class="hidden">
+            <div class="result result-success">
                 <h3>PDF Generated!</h3>
                 <div class="download-buttons">
                     <a id="download-link" href="#" target="_blank" class="download-btn">Download PDF</a>
                     <a id="download-tex-link" href="#" target="_blank" class="download-btn download-btn-secondary">Download TeX</a>
                 </div>
             </div>
-            <div id="result-error" class="result-error hidden">
-                <h3>Error</h3>
-                <p id="error-message"></p>
+            <div class="wizard-nav wizard-nav-center">
+                <button type="button" id="start-over-btn" class="back-btn">← Start over</button>
             </div>
         </div>
     </main>
