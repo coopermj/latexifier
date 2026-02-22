@@ -1,337 +1,382 @@
-// DOM Elements
-const passwordModal = document.getElementById('password-modal');
-const passwordForm = document.getElementById('password-form');
-const passwordInput = document.getElementById('password-input');
-const passwordError = document.getElementById('password-error');
-const mainContent = document.getElementById('main-content');
-const logoutBtn = document.getElementById('logout-btn');
-const sermonForm = document.getElementById('sermon-form');
-const notesInput = document.getElementById('notes');
-const coverImageInput = document.getElementById('cover-image');
-const fileName = document.getElementById('file-name');
-const imagePreview = document.getElementById('image-preview');
-const previewImg = document.getElementById('preview-img');
-const clearImageBtn = document.getElementById('clear-image');
-const submitBtn = document.getElementById('submit-btn');
-const btnText = document.getElementById('btn-text');
-const btnSpinner = document.getElementById('btn-spinner');
-const result = document.getElementById('result');
-const resultSuccess = document.getElementById('result-success');
-const resultError = document.getElementById('result-error');
-const downloadLink = document.getElementById('download-link');
-const errorMessage = document.getElementById('error-message');
-const commentaryMhc = document.getElementById('commentary-mhc');
-const commentaryCalvin = document.getElementById('commentary-calvin');
-
-// State
+// ─── State ────────────────────────────────────────────────────────────────────
 let coverImageBase64 = null;
 let bulletinPdfBase64 = null;
 let prayerPdfBase64 = null;
+let extractedOutline = null;    // SermonOutline dict from /web/extract
+let extractedCandidates = null; // {source_key: {source_name, entries[]}} from /web/extract
 
-// Check if already authenticated (has valid session cookie)
+// ─── Wizard Navigation ────────────────────────────────────────────────────────
+function showStep(n) {
+    [1, 2, 3].forEach(i => {
+        document.getElementById(`step-${i}`).classList.toggle('hidden', i !== n);
+        const ind = document.getElementById(`step-ind-${i}`);
+        ind.classList.toggle('active', i === n);
+        ind.classList.toggle('done', i < n);
+    });
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+const passwordModal = document.getElementById('password-modal');
+const mainContent   = document.getElementById('main-content');
+
 async function checkAuth() {
     try {
-        // Try to access a protected endpoint
-        const response = await fetch('/web/generate', {
+        const resp = await fetch('/web/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ notes: '' }),
-            credentials: 'include'
+            credentials: 'include',
         });
-
-        if (response.status !== 401) {
-            // Already authenticated (even if request failed for other reasons)
-            showMainContent();
-            return;
-        }
-    } catch (e) {
-        // Network error, show login
-    }
-
+        if (resp.status !== 401) { showMainContent(); return; }
+    } catch (e) {}
     showPasswordModal();
 }
 
 function showPasswordModal() {
     passwordModal.classList.remove('hidden');
     mainContent.classList.add('hidden');
-    passwordInput.focus();
+    document.getElementById('password-input').focus();
 }
 
 function showMainContent() {
     passwordModal.classList.add('hidden');
     mainContent.classList.remove('hidden');
+    showStep(1);
 }
 
-// Password Form Submit
-passwordForm.addEventListener('submit', async (e) => {
+document.getElementById('password-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    passwordError.classList.add('hidden');
-
-    const password = passwordInput.value;
-
+    const err = document.getElementById('password-error');
+    err.classList.add('hidden');
     try {
-        const response = await fetch('/web/auth', {
+        const resp = await fetch('/web/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password }),
-            credentials: 'include'
+            body: JSON.stringify({ password: document.getElementById('password-input').value }),
+            credentials: 'include',
         });
-
-        const data = await response.json();
-
-        if (data.valid) {
-            showMainContent();
-            passwordInput.value = '';
-        } else {
-            passwordError.classList.remove('hidden');
-            passwordInput.select();
-        }
-    } catch (error) {
-        passwordError.textContent = 'Connection error. Please try again.';
-        passwordError.classList.remove('hidden');
+        const data = await resp.json();
+        if (data.valid) { showMainContent(); document.getElementById('password-input').value = ''; }
+        else { err.classList.remove('hidden'); document.getElementById('password-input').select(); }
+    } catch (_) {
+        err.textContent = 'Connection error. Please try again.';
+        err.classList.remove('hidden');
     }
 });
 
-// Logout
-logoutBtn.addEventListener('click', async () => {
-    try {
-        await fetch('/web/logout', {
-            method: 'POST',
-            credentials: 'include'
-        });
-    } catch (e) {
-        // Ignore errors
-    }
-
-    coverImageBase64 = null;
-    bulletinPdfBase64 = null;
-    prayerPdfBase64 = null;
-    notesInput.value = '';
-    commentaryMhc.checked = false;
-    commentaryCalvin.checked = false;
+document.getElementById('logout-btn').addEventListener('click', async () => {
+    try { await fetch('/web/logout', { method: 'POST', credentials: 'include' }); } catch (_) {}
+    coverImageBase64 = bulletinPdfBase64 = prayerPdfBase64 = null;
+    extractedOutline = extractedCandidates = null;
+    document.getElementById('notes').value = '';
     clearImagePreview();
     clearBulletinPdf();
     clearPrayerPdf();
-    hideResults();
+    document.getElementById('extract-error').classList.add('hidden');
     showPasswordModal();
 });
 
-// File Input Handling
-document.querySelector('.file-input-wrapper').addEventListener('click', () => {
-    coverImageInput.click();
-});
-
-coverImageInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-
-    if (!file) {
-        clearImagePreview();
-        return;
-    }
-
-    // Update file name display
-    fileName.textContent = file.name;
-
-    // Read file as base64
-    try {
-        coverImageBase64 = await readFileAsBase64(file);
-
-        // Show preview
-        previewImg.src = URL.createObjectURL(file);
-        imagePreview.classList.remove('hidden');
-    } catch (error) {
-        console.error('Failed to read file:', error);
-        clearImagePreview();
-    }
-});
-
+// ─── File helpers ──────────────────────────────────────────────────────────────
 function readFileAsBase64(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => {
-            // Remove data URL prefix (e.g., "data:image/png;base64,")
-            const base64 = reader.result.split(',')[1];
-            resolve(base64);
-        };
+        reader.onload  = () => resolve(reader.result.split(',')[1]);
         reader.onerror = reject;
         reader.readAsDataURL(file);
     });
 }
 
-clearImageBtn.addEventListener('click', () => {
-    clearImagePreview();
+// Cover image
+document.getElementById('cover-wrapper').addEventListener('click', () =>
+    document.getElementById('cover-image').click());
+
+document.getElementById('cover-image').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) { clearImagePreview(); return; }
+    document.getElementById('file-name').textContent = file.name;
+    try {
+        coverImageBase64 = await readFileAsBase64(file);
+        document.getElementById('preview-img').src = URL.createObjectURL(file);
+        document.getElementById('image-preview').classList.remove('hidden');
+    } catch (_) { clearImagePreview(); }
 });
 
+document.getElementById('clear-image').addEventListener('click', clearImagePreview);
+
 function clearImagePreview() {
-    coverImageInput.value = '';
-    fileName.textContent = 'No file chosen';
-    imagePreview.classList.add('hidden');
-    previewImg.src = '';
+    document.getElementById('cover-image').value = '';
+    document.getElementById('file-name').textContent = 'No file chosen';
+    document.getElementById('image-preview').classList.add('hidden');
+    document.getElementById('preview-img').src = '';
     coverImageBase64 = null;
 }
 
-// Bulletin PDF Handling
-const bulletinInput = document.getElementById('bulletin-pdf');
-const bulletinFileName = document.getElementById('bulletin-file-name');
-const clearBulletinBtn = document.getElementById('clear-bulletin');
+// Bulletin PDF
+document.getElementById('bulletin-wrapper').addEventListener('click', () =>
+    document.getElementById('bulletin-pdf').click());
 
-document.getElementById('bulletin-wrapper').addEventListener('click', () => {
-    bulletinInput.click();
-});
-
-bulletinInput.addEventListener('change', async (e) => {
+document.getElementById('bulletin-pdf').addEventListener('change', async (e) => {
     const file = e.target.files[0];
-    if (!file) {
-        clearBulletinPdf();
-        return;
-    }
-    bulletinFileName.textContent = file.name;
+    if (!file) { clearBulletinPdf(); return; }
+    document.getElementById('bulletin-file-name').textContent = file.name;
     try {
         bulletinPdfBase64 = await readFileAsBase64(file);
-        clearBulletinBtn.classList.remove('hidden');
-    } catch (error) {
-        console.error('Failed to read bulletin PDF:', error);
-        clearBulletinPdf();
-    }
+        document.getElementById('clear-bulletin').classList.remove('hidden');
+    } catch (_) { clearBulletinPdf(); }
 });
 
-clearBulletinBtn.addEventListener('click', () => {
-    clearBulletinPdf();
-});
+document.getElementById('clear-bulletin').addEventListener('click', clearBulletinPdf);
 
 function clearBulletinPdf() {
-    bulletinInput.value = '';
-    bulletinFileName.textContent = 'No file chosen';
+    document.getElementById('bulletin-pdf').value = '';
+    document.getElementById('bulletin-file-name').textContent = 'No file chosen';
     bulletinPdfBase64 = null;
-    clearBulletinBtn.classList.add('hidden');
+    document.getElementById('clear-bulletin').classList.add('hidden');
 }
 
-// Prayer Requests PDF Handling
-const prayerInput = document.getElementById('prayer-pdf');
-const prayerFileName = document.getElementById('prayer-file-name');
-const clearPrayerBtn = document.getElementById('clear-prayer');
+// Prayer PDF
+document.getElementById('prayer-wrapper').addEventListener('click', () =>
+    document.getElementById('prayer-pdf').click());
 
-document.getElementById('prayer-wrapper').addEventListener('click', () => {
-    prayerInput.click();
-});
-
-prayerInput.addEventListener('change', async (e) => {
+document.getElementById('prayer-pdf').addEventListener('change', async (e) => {
     const file = e.target.files[0];
-    if (!file) {
-        clearPrayerPdf();
-        return;
-    }
-    prayerFileName.textContent = file.name;
+    if (!file) { clearPrayerPdf(); return; }
+    document.getElementById('prayer-file-name').textContent = file.name;
     try {
         prayerPdfBase64 = await readFileAsBase64(file);
-        clearPrayerBtn.classList.remove('hidden');
-    } catch (error) {
-        console.error('Failed to read prayer PDF:', error);
-        clearPrayerPdf();
+        document.getElementById('clear-prayer').classList.remove('hidden');
+    } catch (_) { clearPrayerPdf(); }
+});
+
+document.getElementById('clear-prayer').addEventListener('click', clearPrayerPdf);
+
+function clearPrayerPdf() {
+    document.getElementById('prayer-pdf').value = '';
+    document.getElementById('prayer-file-name').textContent = 'No file chosen';
+    prayerPdfBase64 = null;
+    document.getElementById('clear-prayer').classList.add('hidden');
+}
+
+// ─── Step 1: Extract ──────────────────────────────────────────────────────────
+document.getElementById('sermon-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    document.getElementById('extract-error').classList.add('hidden');
+
+    const notes = document.getElementById('notes').value.trim();
+    if (!notes) { showExtractError('Please enter sermon notes'); return; }
+
+    const commentaries = ['commentary-mhc', 'commentary-calvin', 'commentary-scofield']
+        .map(id => document.getElementById(id))
+        .filter(el => el && el.checked)
+        .map(el => el.value);
+
+    setExtracting(true);
+
+    try {
+        const resp = await fetch('/web/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes, image: coverImageBase64, commentaries }),
+            credentials: 'include',
+        });
+
+        if (resp.status === 401) { showPasswordModal(); return; }
+
+        const data = await resp.json();
+
+        if (!data.success) { showExtractError(data.error || 'Extraction failed'); return; }
+
+        extractedOutline    = data.outline;
+        extractedCandidates = data.candidates;
+
+        renderReviewStep(data.outline, data.candidates);
+        showStep(2);
+
+    } catch (_) {
+        showExtractError('Connection error. Please try again.');
+    } finally {
+        setExtracting(false);
     }
 });
 
-clearPrayerBtn.addEventListener('click', () => {
-    clearPrayerPdf();
-});
-
-function clearPrayerPdf() {
-    prayerInput.value = '';
-    prayerFileName.textContent = 'No file chosen';
-    prayerPdfBase64 = null;
-    clearPrayerBtn.classList.add('hidden');
+function setExtracting(loading) {
+    document.getElementById('extract-btn').disabled = loading;
+    document.getElementById('extract-btn-text').textContent = loading ? 'Extracting…' : 'Extract Outline';
+    document.getElementById('extract-btn-spinner').classList.toggle('hidden', !loading);
 }
 
-// Form Submit
-sermonForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    hideResults();
+function showExtractError(msg) {
+    document.getElementById('extract-error-message').textContent = msg;
+    document.getElementById('extract-error').classList.remove('hidden');
+}
 
-    const notes = notesInput.value.trim();
+// ─── Step 2: Review ───────────────────────────────────────────────────────────
+function renderReviewStep(outline, candidates) {
+    // Outline summary
+    const meta = outline.metadata;
+    const summaryEl = document.getElementById('outline-summary');
+    summaryEl.innerHTML = `
+        <h2 class="outline-title">${escapeHtml(meta.title)}</h2>
+        <p class="outline-meta">${[meta.speaker, meta.date].filter(Boolean).map(escapeHtml).join(' · ')}</p>
+        <p class="outline-passage">Main passage: <strong>${escapeHtml(outline.main_passage)}</strong></p>
+    `;
 
-    if (!notes) {
-        showError('Please enter sermon notes');
+    // Commentary cards
+    const cardsEl = document.getElementById('commentary-cards');
+    cardsEl.innerHTML = '';
+
+    const sourceKeys = Object.keys(candidates || {});
+
+    if (sourceKeys.length === 0) {
+        cardsEl.innerHTML = '<p class="no-commentary">No commentary selected or no results found.</p>';
         return;
     }
 
-    // Show loading state
-    setLoading(true);
+    sourceKeys.forEach(sourceKey => {
+        const sourceData = candidates[sourceKey];
+        const card = document.createElement('div');
+        card.className = 'commentary-card';
 
-    // Collect selected commentaries (get elements fresh in case of DOM changes)
-    const commentaries = [];
-    const mhcCheckbox = document.getElementById('commentary-mhc');
-    const calvinCheckbox = document.getElementById('commentary-calvin');
-    const scofieldCheckbox = document.getElementById('commentary-scofield');
-    if (mhcCheckbox && mhcCheckbox.checked) commentaries.push(mhcCheckbox.value);
-    if (calvinCheckbox && calvinCheckbox.checked) commentaries.push(calvinCheckbox.value);
-    if (scofieldCheckbox && scofieldCheckbox.checked) commentaries.push(scofieldCheckbox.value);
+        let entriesHtml = sourceData.entries.map((entry, i) => {
+            const verseLabel = entry.verse_end && entry.verse_end !== entry.verse_start
+                ? `vv.${entry.verse_start}–${entry.verse_end}`
+                : `v.${entry.verse_start}`;
+            const checkId = `entry-${sourceKey}-${i}`;
+            const shortText = entry.text.length > 150
+                ? entry.text.slice(0, 150) + '…'
+                : entry.text;
+            const needsExpand = entry.text.length > 150;
+
+            return `
+                <label class="commentary-entry">
+                    <input type="checkbox" id="${checkId}" data-source-key="${sourceKey}" data-entry-index="${i}" checked>
+                    <span class="entry-verse">${escapeHtml(verseLabel)}</span>
+                    <span class="entry-text" data-full="${escapeHtml(entry.text)}" data-short="${escapeHtml(shortText)}">
+                        ${escapeHtml(shortText)}
+                    </span>
+                    ${needsExpand ? `<button type="button" class="show-more-btn" data-expanded="false">show more ▾</button>` : ''}
+                </label>
+            `;
+        }).join('');
+
+        card.innerHTML = `
+            <div class="card-source-name">${escapeHtml(sourceData.source_name)}</div>
+            <div class="card-entries">${entriesHtml}</div>
+        `;
+        cardsEl.appendChild(card);
+    });
+
+    // Wire up show more/less toggles
+    cardsEl.querySelectorAll('.show-more-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const expanded = btn.dataset.expanded === 'true';
+            const textEl = btn.previousElementSibling;
+            textEl.textContent = expanded ? textEl.dataset.short : textEl.dataset.full;
+            btn.textContent = expanded ? 'show more ▾' : 'show less ▴';
+            btn.dataset.expanded = String(!expanded);
+        });
+    });
+}
+
+// Back to step 1
+document.getElementById('back-btn').addEventListener('click', () => {
+    document.getElementById('review-error').classList.add('hidden');
+    showStep(1);
+});
+
+// ─── Step 2 → 3: Generate ─────────────────────────────────────────────────────
+document.getElementById('generate-btn').addEventListener('click', async () => {
+    document.getElementById('review-error').classList.add('hidden');
+
+    // Collect selected entries grouped by source_name
+    const overrideMap = {}; // source_name → {source_name, entries[]}
+    const cardsEl = document.getElementById('commentary-cards');
+
+    cardsEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        if (!cb.checked) return;
+        const sourceKey = cb.dataset.sourceKey;
+        const idx = parseInt(cb.dataset.entryIndex, 10);
+        const sourceData = extractedCandidates[sourceKey];
+        const entry = sourceData.entries[idx];
+        const name = sourceData.source_name;
+        if (!overrideMap[name]) overrideMap[name] = { source_name: name, entries: [] };
+        overrideMap[name].entries.push({
+            verse_start: entry.verse_start,
+            verse_end: entry.verse_end,
+            text: entry.text,
+        });
+    });
+
+    const commentaryOverrides = Object.values(overrideMap);
+
+    setGenerating(true);
 
     try {
-        const response = await fetch('/web/generate', {
+        const body = {
+            notes: document.getElementById('notes').value,
+            image: coverImageBase64,
+            bulletin_pdf: bulletinPdfBase64,
+            prayer_pdf: prayerPdfBase64,
+            outline: extractedOutline,
+            commentary_overrides: commentaryOverrides,
+        };
+
+        const resp = await fetch('/web/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                notes: notes,
-                image: coverImageBase64,
-                commentaries: commentaries,
-                bulletin_pdf: bulletinPdfBase64,
-                prayer_pdf: prayerPdfBase64
-            }),
-            credentials: 'include'
+            body: JSON.stringify(body),
+            credentials: 'include',
         });
 
-        if (response.status === 401) {
-            showPasswordModal();
-            return;
-        }
+        if (resp.status === 401) { showPasswordModal(); return; }
 
-        const data = await response.json();
+        const data = await resp.json();
 
         if (data.success && data.url) {
-            showSuccess(data.url, data.tex_url);
+            document.getElementById('download-link').href = data.url;
+            const texLink = document.getElementById('download-tex-link');
+            if (data.tex_url) { texLink.href = data.tex_url; texLink.style.display = 'inline-block'; }
+            else { texLink.style.display = 'none'; }
+            showStep(3);
         } else {
-            showError(data.error || 'Unknown error occurred');
+            document.getElementById('review-error-message').textContent = data.error || 'Unknown error';
+            document.getElementById('review-error').classList.remove('hidden');
         }
-    } catch (error) {
-        console.error('Request failed:', error);
-        showError('Connection error. Please try again.');
+    } catch (_) {
+        document.getElementById('review-error-message').textContent = 'Connection error. Please try again.';
+        document.getElementById('review-error').classList.remove('hidden');
     } finally {
-        setLoading(false);
+        setGenerating(false);
     }
 });
 
-function setLoading(loading) {
-    submitBtn.disabled = loading;
-    btnText.textContent = loading ? 'Generating...' : 'Generate PDF';
-    btnSpinner.classList.toggle('hidden', !loading);
+function setGenerating(loading) {
+    document.getElementById('generate-btn').disabled = loading;
+    document.getElementById('generate-btn-text').textContent = loading ? 'Generating…' : 'Generate PDF';
+    document.getElementById('generate-btn-spinner').classList.toggle('hidden', !loading);
 }
 
-function hideResults() {
-    result.classList.add('hidden');
-    resultSuccess.classList.add('hidden');
-    resultError.classList.add('hidden');
+// ─── Step 3: Done ─────────────────────────────────────────────────────────────
+document.getElementById('start-over-btn').addEventListener('click', () => {
+    extractedOutline = extractedCandidates = null;
+    document.getElementById('notes').value = '';
+    clearImagePreview(); clearBulletinPdf(); clearPrayerPdf();
+    ['commentary-mhc', 'commentary-calvin', 'commentary-scofield'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.checked = false;
+    });
+    showStep(1);
+});
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
-function showSuccess(url, texUrl) {
-    downloadLink.href = url;
-    const texLink = document.getElementById('download-tex-link');
-    if (texLink && texUrl) {
-        texLink.href = texUrl;
-        texLink.style.display = 'inline-block';
-    } else if (texLink) {
-        texLink.style.display = 'none';
-    }
-    result.classList.remove('hidden');
-    resultSuccess.classList.remove('hidden');
-    resultError.classList.add('hidden');
-}
-
-function showError(message) {
-    errorMessage.textContent = message;
-    result.classList.remove('hidden');
-    resultSuccess.classList.add('hidden');
-    resultError.classList.remove('hidden');
-}
-
-// Initialize
+// ─── Init ─────────────────────────────────────────────────────────────────────
 checkAuth();
