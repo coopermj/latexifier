@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Cookie, Response
 from pydantic import BaseModel
 
+from ..commentary import CommentarySource, fetch_commentary_for_reference
 from ..compiler import CompilationError
 from ..config import get_settings
 from ..llm import extract_sermon_outline_from_text, LLMError
@@ -158,6 +159,60 @@ async def authenticate(request: AuthRequest, response: Response):
         return AuthResponse(valid=True)
 
     return AuthResponse(valid=False)
+
+
+@router.post("/extract", response_model=ExtractResponse)
+async def extract_sermon(
+    request: ExtractRequest,
+    session: str | None = Cookie(default=None)
+):
+    """Extract sermon outline and fetch commentary candidates."""
+    settings = get_settings()
+
+    if not settings.is_development:
+        if not session or session not in _valid_sessions:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not request.notes or not request.notes.strip():
+        return ExtractResponse(success=False, error="No sermon notes provided")
+
+    try:
+        outline = await extract_sermon_outline_from_text(request.notes)
+    except LLMError as exc:
+        return ExtractResponse(success=False, error=str(exc))
+    except Exception as exc:
+        return ExtractResponse(success=False, error=f"Failed to parse notes: {exc}")
+
+    # Fetch commentary candidates for the main passage from each selected source
+    candidates: dict[str, ExtractCandidateSource] = {}
+    source_map = {
+        "mhc": CommentarySource.MHC,
+        "calvincommentaries": CommentarySource.CALVIN,
+        "scofield": CommentarySource.SCOFIELD,
+    }
+    for source_key in request.commentaries:
+        source = source_map.get(source_key)
+        if not source:
+            continue
+        result = await fetch_commentary_for_reference(outline.main_passage, source)
+        if result:
+            candidates[source_key] = ExtractCandidateSource(
+                source_name=result.source_name,
+                entries=[
+                    ExtractCandidateEntry(
+                        verse_start=e.verse_start,
+                        verse_end=e.verse_end,
+                        text=e.text,
+                    )
+                    for e in result.entries
+                ],
+            )
+
+    return ExtractResponse(
+        success=True,
+        outline=outline,
+        candidates=candidates,
+    )
 
 
 @router.post("/generate", response_model=GenerateResponse)
