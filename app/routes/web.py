@@ -169,6 +169,7 @@ async def extract_sermon(
     """Extract sermon outline and fetch commentary candidates."""
     settings = get_settings()
 
+    # Skip auth in development mode
     if not settings.is_development:
         if not session or session not in _valid_sessions:
             raise HTTPException(status_code=401, detail="Not authenticated")
@@ -179,8 +180,10 @@ async def extract_sermon(
     try:
         outline = await extract_sermon_outline_from_text(request.notes)
     except LLMError as exc:
+        logger.error("LLM extraction failed: %s", exc)
         return ExtractResponse(success=False, error=str(exc))
     except Exception as exc:
+        logger.exception("Unexpected error during extraction")
         return ExtractResponse(success=False, error=f"Failed to parse notes: {exc}")
 
     # Fetch commentary candidates for the main passage from each selected source

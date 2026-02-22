@@ -28,6 +28,18 @@ def test_extract_requires_auth():
             assert resp.status_code == 401
 
 
+def test_extract_rejects_invalid_session():
+    """A non-empty but unknown session cookie is also rejected."""
+    mock_settings = MagicMock()
+    mock_settings.is_development = False
+    with patch("app.routes.web.get_settings", return_value=mock_settings):
+        with patch("app.routes.web._valid_sessions", set()):
+            with TestClient(app) as client:
+                client.cookies.set("session", "forged-token-xyz")
+                resp = client.post("/web/extract", json={"notes": "test"})
+            assert resp.status_code == 401
+
+
 def test_extract_returns_outline_and_candidates():
     with (
         patch("app.routes.web.extract_sermon_outline_from_text", new_callable=AsyncMock) as mock_extract,
