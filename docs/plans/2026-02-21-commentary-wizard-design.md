@@ -1,7 +1,7 @@
 # Design: Commentary Review Wizard
 
 **Date:** 2026-02-21
-**Status:** In progress — Section 1 (API & Data Model) approved
+**Status:** Approved — all sections reviewed
 
 ## Problem
 
@@ -69,33 +69,41 @@ If provided, these entries are used directly for matching references instead of 
 
 ---
 
-## Section 2: Wizard UI (pending approval)
+## Section 2: Wizard UI (approved)
 
-_To be designed._
+### Step indicator
 
-### Wizard steps
+Simple 1–2–3 indicator at top of page showing current step.
 
-1. **Input** — Notes text, cover image, bulletin/prayer PDFs, commentary source checkboxes. Button: "Extract Outline"
-2. **Review** — Shows extracted outline summary + commentary candidate cards per scripture reference. User checks/unchecks individual entries. Button: "Generate PDF"
-3. **Result** — Download PDF / TeX links (same as today)
+### Step 1 — Input
 
-### Commentary candidate card (per reference)
+Same fields as today's form. Button relabeled "Extract Outline →". Spinner shows "Extracting…" while Claude runs + commentaries are fetched.
 
-Each scripture reference found in the outline gets a card grouping entries by source:
+### Step 2 — Review
+
+- Extracted metadata shown read-only at top (title, speaker, date, main scripture)
+- One card per scripture reference found in the outline, labeled with the point it belongs to
+- Within each card, entries grouped by source, each with a checkbox
+- First entry per source per reference is **checked by default**
+- Commentary text truncated to ~150 chars with "show more ▾" toggle
+- References with no commentary from selected sources are hidden
+- "← Back" returns to Step 1; "Generate PDF →" compiles with selections
+- Outline fields (title, speaker, points) are read-only — editing extracted metadata is out of scope
+
+### Step 3 — Done
+
+Download PDF and TeX links. "← Start over" resets to Step 1.
+
+### Commentary card layout (per reference)
 
 ```
-James 3:1–5
-├── Matthew Henry
-│   [x] v.1–4  "The tongue is a fire, a world of iniquity..."
-│   [ ] v.5–6  "Behold, how great a matter a little fire kindleth..."
-└── Calvin's Commentary
-    [x] v.1–2  "By the word teachers he means those who preside..."
+┌── James 3:1–5 (Point 1) ──────────────────────────────┐
+│  Matthew Henry                                         │
+│  ☑ v.1–4  "The tongue is a fire, a world of iniquity… │
+│            [show more ▾]                               │
+│  ☐ v.5–6  "Behold, how great a matter a little fire…  │
+│                                                        │
+│  Calvin's Commentaries                                 │
+│  ☑ v.1–2  "By the word teachers he means those who…   │
+└────────────────────────────────────────────────────────┘
 ```
-
----
-
-## Open Questions
-
-- Should Step 2 also allow the user to edit the extracted outline (title, points) before compiling?
-- Should commentary candidates include a truncated preview (~200 chars) or the full text?
-- How should references with no available commentary be shown (hidden vs. greyed out)?
