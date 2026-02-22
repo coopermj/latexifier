@@ -130,6 +130,7 @@ async def generate_sermon_latex(
         include_main_passage: Whether to include full main passage text
         cover_image: Optional filename of cover image (must be in work directory)
         commentary_sources: List of commentary sources to include (mhc, calvincommentaries)
+        commentary_overrides: Pre-fetched CommentaryResult objects to use directly, bypassing DB fetch
         include_bulletin: Whether bulletin PDF is included (adds TOC entry and includes it)
         include_prayer_requests: Whether prayer requests PDF is included (adds TOC entry and includes it)
 
