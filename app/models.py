@@ -95,7 +95,7 @@ class HealthResponse(BaseModel):
 
 class SermonMetadata(BaseModel):
     """Extracted metadata from sermon notes."""
-    title: str = Field(..., description="Sermon title")
+    title: str | None = Field(None, description="Sermon title")
     speaker: str | None = Field(None, description="Speaker/pastor name")
     date: str | None = Field(None, description="Sermon date")
     series: str | None = Field(None, description="Sermon series name if mentioned")
@@ -119,7 +119,7 @@ class SermonSubPoint(BaseModel):
 class SermonPoint(BaseModel):
     """A main sermon point with optional sub-points."""
     number: int = Field(..., description="Point number (1, 2, 3...)")
-    title: str = Field(..., description="Main point title")
+    title: str | None = Field(None, description="Main point title")
     content: str | None = Field(None, description="Content directly under the main point")
     bullets: list[str] = Field(default_factory=list, description="Simple bullet points (not lettered sub-points)")
     numbered_items: list[str] = Field(default_factory=list, description="Numbered/enumerated list items")

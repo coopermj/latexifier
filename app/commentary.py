@@ -12,9 +12,22 @@ logger = logging.getLogger(__name__)
 
 class CommentarySource(str, Enum):
     """Available commentary sources."""
-    MHC = "mhc"  # Matthew Henry's Complete Commentary
-    CALVIN = "calvincommentaries"  # Calvin's Collected Commentaries
-    SCOFIELD = "scofield"  # Scofield Reference Notes, 1917 Edition
+    MHC = "mhc"                          # Matthew Henry's Complete Commentary
+    CALVIN = "calvincommentaries"        # Calvin's Collected Commentaries
+    SCOFIELD = "scofield"                # Scofield Reference Notes, 1917 Edition
+    LUTHER = "luther"                    # Luther's Commentary on Selected Bible Passages
+    KINGCOMMENTS = "kingcomments"        # Kingcomments on the whole Bible
+    MHCC = "mhcc"                        # Matthew Henry's Concise Commentary
+    KD = "kd"                            # Keil and Delitzsch OT Commentary
+    DTN = "dtn"                          # Darby Translation Notes
+    PNT = "pnt"                          # The People's New Testament
+    FAMILY = "family"                    # Family Bible Notes
+    TFG = "tfg"                          # The Fourfold Gospel & Commentary on Acts
+    BURKITT = "burkitt"                  # Burkitt's Expository Notes
+    ABBOTT = "abbott"                    # Illustrated New Testament
+    LIGHTFOOT = "lightfoot"              # John Lightfoot Commentary
+    CATENA = "catena"                    # Catena Aurea (Thomas Aquinas)
+    TDAVID = "tdavid"                    # C. H. Spurgeon's Treasury of David
 
 
 @dataclass

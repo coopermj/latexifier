@@ -188,11 +188,7 @@ async def extract_sermon(
 
     # Fetch commentary candidates for the main passage from each selected source
     candidates: dict[str, ExtractCandidateSource] = {}
-    source_map = {
-        "mhc": CommentarySource.MHC,
-        "calvincommentaries": CommentarySource.CALVIN,
-        "scofield": CommentarySource.SCOFIELD,
-    }
+    source_map = {s.value: s for s in CommentarySource}
     for source_key in request.commentaries:
         source = source_map.get(source_key)
         if not source:

@@ -138,7 +138,7 @@ async def generate_sermon_latex(
         Complete LaTeX document as string
     """
     lines = []
-    title = escape_latex(outline.metadata.title)
+    title = escape_latex(outline.metadata.title or "")
     speaker = escape_latex(outline.metadata.speaker or "")
     date = format_date(outline.metadata.date)
     main_passage = outline.main_passage
@@ -442,7 +442,7 @@ async def generate_sermon_latex(
 def _render_point(point: SermonPoint, version: str) -> list[str]:
     """Render a main sermon point as a section."""
     lines = []
-    section_title = escape_latex(point.title)
+    section_title = escape_latex(point.title or "")
 
     # If point has sub-points, each sub-point gets its own page with section header
     if point.sub_points:
@@ -645,14 +645,8 @@ async def _render_commentary_appendix(
     logger.info("Rendering commentary appendix for passage: %s, sources: %s", main_passage, commentary_sources)
 
     # Map source strings to CommentarySource enum
-    sources = []
-    for src in commentary_sources:
-        if src == "mhc":
-            sources.append(CommentarySource.MHC)
-        elif src == "calvincommentaries":
-            sources.append(CommentarySource.CALVIN)
-        elif src == "scofield":
-            sources.append(CommentarySource.SCOFIELD)
+    slug_to_source = {s.value: s for s in CommentarySource}
+    sources = [slug_to_source[src] for src in commentary_sources if src in slug_to_source]
 
     if preloaded is not None:
         commentaries = preloaded

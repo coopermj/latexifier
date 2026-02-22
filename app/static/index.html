@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sermon Notes Processor</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
     <!-- Password Modal -->
@@ -56,19 +56,74 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Commentary Sources (optional)</label>
+                    <div class="commentary-label-row">
+                        <label>Commentary Sources (optional)</label>
+                        <button type="button" id="select-all-commentaries">Select all</button>
+                    </div>
                     <div class="checkbox-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="commentary-mhc" value="mhc">
                             <span>Matthew Henry's Commentary</span>
                         </label>
                         <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-mhcc" value="mhcc">
+                            <span>Matthew Henry's Concise Commentary</span>
+                        </label>
+                        <label class="checkbox-label">
                             <input type="checkbox" id="commentary-calvin" value="calvincommentaries">
                             <span>Calvin's Commentaries</span>
                         </label>
                         <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-luther" value="luther">
+                            <span>Luther's Commentary</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-kd" value="kd">
+                            <span>Keil &amp; Delitzsch (OT)</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-kingcomments" value="kingcomments">
+                            <span>Kingcomments</span>
+                        </label>
+                        <label class="checkbox-label">
                             <input type="checkbox" id="commentary-scofield" value="scofield">
                             <span>Scofield Reference Notes</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-dtn" value="dtn">
+                            <span>Darby Translation Notes</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-pnt" value="pnt">
+                            <span>People's New Testament</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-family" value="family">
+                            <span>Family Bible Notes</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-tfg" value="tfg">
+                            <span>The Fourfold Gospel</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-burkitt" value="burkitt">
+                            <span>Burkitt's Expository Notes</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-abbott" value="abbott">
+                            <span>Illustrated New Testament</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-lightfoot" value="lightfoot">
+                            <span>John Lightfoot Commentary</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-catena" value="catena">
+                            <span>Catena Aurea (Thomas Aquinas)</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-tdavid" value="tdavid">
+                            <span>Treasury of David (Spurgeon)</span>
                         </label>
                     </div>
                 </div>
@@ -135,6 +190,6 @@
         </div>
     </main>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=4"></script>
 </body>
 </html>

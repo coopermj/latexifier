@@ -157,6 +157,22 @@ function clearPrayerPdf() {
     document.getElementById('clear-prayer').classList.add('hidden');
 }
 
+// ─── Select all commentaries ──────────────────────────────────────────────────
+document.getElementById('select-all-commentaries').addEventListener('click', () => {
+    const checkboxes = document.querySelectorAll('#sermon-form .checkbox-group input[type="checkbox"]');
+    const allChecked = [...checkboxes].every(cb => cb.checked);
+    checkboxes.forEach(cb => { cb.checked = !allChecked; });
+    document.getElementById('select-all-commentaries').textContent = allChecked ? 'Select all' : 'Deselect all';
+});
+
+document.querySelectorAll('#sermon-form .checkbox-group input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+        const checkboxes = document.querySelectorAll('#sermon-form .checkbox-group input[type="checkbox"]');
+        const allChecked = [...checkboxes].every(c => c.checked);
+        document.getElementById('select-all-commentaries').textContent = allChecked ? 'Deselect all' : 'Select all';
+    });
+});
+
 // ─── Step 1: Extract ──────────────────────────────────────────────────────────
 document.getElementById('sermon-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -361,10 +377,10 @@ document.getElementById('start-over-btn').addEventListener('click', () => {
     extractedOutline = extractedCandidates = null;
     document.getElementById('notes').value = '';
     clearImagePreview(); clearBulletinPdf(); clearPrayerPdf();
-    ['commentary-mhc', 'commentary-calvin', 'commentary-scofield'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.checked = false;
+    document.querySelectorAll('#sermon-form input[type="checkbox"]').forEach(el => {
+        el.checked = false;
     });
+    document.getElementById('select-all-commentaries').textContent = 'Select all';
     showStep(1);
 });
 
