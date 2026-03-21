@@ -635,15 +635,12 @@ async def process_scripture_placeholders(
             # Collect reference for commentary appendix
             _collected_references.add(result.canonical or spec.reference)
         except ScriptureLookupError as exc:
-            errors.append(f"{spec.reference} ({spec.version.value}): {exc}")
-        except Exception as exc:  # pragma: no cover
+            logger.warning("Skipping scripture placeholder — lookup failed: %s (%s): %s",
+                           spec.reference, spec.version.value, exc)
+            replacements[spec.raw] = f"% [scripture not found: {spec.reference}]"
+        except Exception as exc:
             logger.exception("Unexpected error while fetching scripture for %s", spec.reference)
-            errors.append(f"{spec.reference} ({spec.version.value}): {exc}")
-
-    if errors:
-        raise ScripturePlaceholderError(
-            "Failed to fetch scripture for: " + "; ".join(errors)
-        )
+            replacements[spec.raw] = f"% [scripture error: {spec.reference}]"
 
     for tex_file, pairs in file_placeholders.items():
         try:
