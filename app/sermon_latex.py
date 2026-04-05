@@ -40,10 +40,12 @@ def escape_latex(text: str) -> str:
     return text
 
 
-def scripture_placeholder(reference: str, version: str, nolinks: bool = False) -> str:
+def scripture_placeholder(reference: str, version: str, nolinks: bool = False, strongs_overlay: bool = False) -> str:
     """Generate a scripture placeholder string."""
     if nolinks:
         return f"[[scripture:{reference}|{version}|nolinks=true]]"
+    if strongs_overlay:
+        return f"[[scripture:{reference}|{version}|strongs_overlay=true]]"
     return f"[[scripture:{reference}|{version}]]"
 
 
@@ -353,10 +355,10 @@ async def generate_sermon_latex(
     lines.append(r"\newpage{}")
     lines.append("")
 
-    # Main passage in two columns
+    # Main passage in two columns (with Strong's overlay so ESV words link to word study)
     if include_main_passage and main_passage:
         lines.append(r"\begin{multicols}{2}")
-        lines.append(scripture_placeholder(main_passage, scripture_version))
+        lines.append(scripture_placeholder(main_passage, scripture_version, strongs_overlay=True))
         lines.append(r"\end{multicols}")
         lines.append("")
         lines.append(r"\newpage{}")

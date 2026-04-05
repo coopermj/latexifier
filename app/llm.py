@@ -37,9 +37,18 @@ For scripture references:
 - Include book numbers: "1 John 3:16" not "I John 3:16"
 - Keep the parenthetical reference in the content text as well
 
+For scripture_verse matching (sub-points to main passage):
+- The main_passage defines the passage being preached (e.g., "Ephesians 4:22-25")
+- Each sub-point typically addresses a specific verse or verse range within that passage
+- Read the content/title of each sub-point carefully and identify which verse of the main passage it discusses
+- Set scripture_verse to the fully-qualified verse reference including book name (e.g., "Ephesians 4:22" not just "22")
+- If a sub-point spans multiple consecutive verses, use a range: "Ephesians 4:22-23"
+- If you cannot determine which verse a sub-point addresses, leave scripture_verse as null
+- Do NOT put parenthetical cross-references into scripture_verse — those belong in scripture_refs only
+
 LAYOUT HINTS (for rendering):
-- Sub-points WITH scripture_refs will show scripture on left, notes on right (two-column)
-- Sub-points WITHOUT scripture_refs will be full-width text
+- Sub-points WITH scripture_verse OR scripture_refs will show scripture on left, notes on right (two-column)
+- Sub-points WITHOUT scripture_verse AND without scripture_refs will be full-width text
 - Each sub-point gets its own page (whether labeled A/B/C or 1/2/3)
 - Points with simple bullets (●, -, •) but NO sub-points go on ONE page
 - Tables will be rendered as formatted tables in the output
@@ -155,7 +164,7 @@ async def extract_sermon_outline(pdf_bytes: bytes) -> SermonOutline:
                     },
                     {
                         "type": "text",
-                        "text": SERMON_EXTRACTION_PROMPT
+                        "text": SERMON_EXTRACTION_PROMPT_BASE
                     }
                 ]
             }

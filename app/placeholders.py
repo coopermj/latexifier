@@ -75,6 +75,7 @@ class PlaceholderSpec:
     version: ScriptureVersion
     options: ScriptureLookupOptions
     nolinks: bool = False
+    strongs_overlay: bool = False
 
 
 def _parse_bool(value: str) -> bool:
@@ -99,6 +100,7 @@ def _parse_spec(raw_spec: str) -> PlaceholderSpec:
         "footnotes": False,
         "copyright": True,
         "nolinks": False,
+        "strongs_overlay": False,
     }
 
     if len(parts) > 1 and parts[1]:
@@ -128,6 +130,8 @@ def _parse_spec(raw_spec: str) -> PlaceholderSpec:
             options["copyright"] = _parse_bool(value)
         elif key in {"nolinks", "no_links"}:
             options["nolinks"] = _parse_bool(value)
+        elif key in {"strongs_overlay", "strongs"}:
+            options["strongs_overlay"] = _parse_bool(value)
         else:
             raise ScripturePlaceholderError(f"Unknown option '{key}' in scripture placeholder.")
 
@@ -144,6 +148,7 @@ def _parse_spec(raw_spec: str) -> PlaceholderSpec:
         version=version,
         options=lookup_opts,
         nolinks=options["nolinks"],
+        strongs_overlay=options["strongs_overlay"],
     )
 
 
@@ -300,6 +305,19 @@ def _format_scripture_body(
     return converted
 
 
+def _extract_strongs_word_map(html_text: str) -> list[tuple[str, str]]:
+    """Extract unique (strongs_num, net_word) pairs from NET HTML in first-occurrence order."""
+    pattern = re.compile(r'<st data-num="(\d+)"[^>]*>([^<]+)</st>')
+    results = []
+    seen: set[str] = set()
+    for m in pattern.finditer(html_text):
+        num = m.group(1)
+        if num not in seen:
+            results.append((num, m.group(2).strip()))
+            seen.add(num)
+    return results
+
+
 SCRIPTURE_ANALYSIS_PROMPT = '''Analyze this Bible passage and apply LaTeX formatting:
 
 1. **Poetry Detection**: Identify portions that are Hebrew poetry (parallelism, elevated speech, divine pronouncements, blessings, curses, prophetic oracles, songs). Wrap ONLY the poetic portions in \\begin{poetry} and \\end{poetry} tags. Common poetic sections include:
@@ -321,9 +339,14 @@ Scripture text:
 '''
 
 
-async def _analyze_scripture_with_ai(text: str, reference: str) -> str:
+async def _analyze_scripture_with_ai(
+    text: str,
+    reference: str,
+    strongs_word_map: list[tuple[str, str]] | None = None,
+) -> str:
     """
     Use Claude API to detect poetic portions and tag divine names.
+    When strongs_word_map is provided, also annotates ESV words with \\hyperlink commands.
     Falls back to original text if API call fails.
     """
     settings = get_settings()
@@ -333,7 +356,26 @@ async def _analyze_scripture_with_ai(text: str, reference: str) -> str:
         logger.debug("No Anthropic API key, skipping scripture analysis")
         return text
 
-    logger.info("AI analyzing scripture: %s", reference)
+    logger.info("AI analyzing scripture: %s (strongs_overlay=%s)", reference, strongs_word_map is not None)
+
+    if strongs_word_map:
+        strongs_list = "\n".join(f"G{num}: \"{word}\"" for num, word in strongs_word_map)
+        prompt = (
+            SCRIPTURE_ANALYSIS_PROMPT
+            + "\n3. **Strong's Number Links**: The NET Bible renders the same passage with Greek word tags. "
+            "Below is a list of `G<num>: \"<NET rendering>\"` mappings for this passage. "
+            "For each content word (noun, verb, adjective, adverb) in the ESV text that corresponds "
+            "to one of these Greek words, wrap it with `\\hyperlink{strongs-<num>}{<ESV word>}`. "
+            "Guidelines:\n"
+            "   - Match by meaning — ESV and NET often translate the same Greek word differently\n"
+            "   - Skip function words: articles (a, an, the), basic conjunctions (and, or, but), prepositions (in, of, to)\n"
+            "   - Link each Strong's number at most once per verse\n"
+            "   - Only link when confident — skip uncertain matches\n"
+            "   - The \\hyperlink command must use the exact format: \\hyperlink{strongs-NUM}{word}\n\n"
+            f"Strong's number mappings (NET rendering):\n{strongs_list}\n"
+        )
+    else:
+        prompt = SCRIPTURE_ANALYSIS_PROMPT
 
     request_body = {
         "model": "claude-sonnet-4-20250514",
@@ -341,7 +383,7 @@ async def _analyze_scripture_with_ai(text: str, reference: str) -> str:
         "messages": [
             {
                 "role": "user",
-                "content": f"{SCRIPTURE_ANALYSIS_PROMPT}\n\nReference: {reference}\n\n{text}"
+                "content": f"{prompt}\n\nReference: {reference}\n\n{text}"
             }
         ]
     }
@@ -625,10 +667,24 @@ async def process_scripture_placeholders(
                 spec.options.include_footnotes,
                 spec.nolinks,
             )
-            # Apply AI analysis to detect poetry and tag divine names
+
+            # If strongs_overlay, fetch NET to build word→Strong's map for AI annotation
+            strongs_word_map = None
+            if spec.strongs_overlay and not spec.nolinks:
+                try:
+                    net_result = await fetch_scripture(
+                        spec.reference, ScriptureVersion.NET, ScriptureLookupOptions()
+                    )
+                    strongs_word_map = _extract_strongs_word_map(net_result.text)
+                    logger.info("Built Strong's word map with %d entries for %s", len(strongs_word_map), spec.reference)
+                except Exception as exc:
+                    logger.warning("Failed to fetch NET for strongs_overlay on %s: %s", spec.reference, exc)
+
+            # Apply AI analysis to detect poetry, tag divine names, and optionally add Strong's links
             analyzed = await _analyze_scripture_with_ai(
                 formatted,
-                result.canonical or result.reference
+                result.canonical or result.reference,
+                strongs_word_map=strongs_word_map,
             )
             rendered = _render_scripture(result.canonical or result.reference, spec.version, analyzed)
             replacements[spec.raw] = rendered

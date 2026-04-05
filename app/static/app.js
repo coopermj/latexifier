@@ -231,10 +231,30 @@ function renderReviewStep(outline, candidates) {
     // Outline summary
     const meta = outline.metadata;
     const summaryEl = document.getElementById('outline-summary');
+
+    let pointsHtml = '';
+    if (outline.points && outline.points.length > 0) {
+        pointsHtml = '<ol class="outline-points">' + outline.points.map(pt => {
+            let subHtml = '';
+            if (pt.sub_points && pt.sub_points.length > 0) {
+                subHtml = '<ol class="outline-subpoints">' + pt.sub_points.map(sub => {
+                    const label = sub.label ? `${sub.label}. ` : '';
+                    const title = sub.title || sub.content || '';
+                    const verse = sub.scripture_verse
+                        ? `<span class="verse-tag">${escapeHtml(sub.scripture_verse)}</span>`
+                        : '';
+                    return `<li>${label}${escapeHtml(title)}${verse}</li>`;
+                }).join('') + '</ol>';
+            }
+            return `<li><strong>${escapeHtml(pt.title || '')}</strong>${subHtml}</li>`;
+        }).join('') + '</ol>';
+    }
+
     summaryEl.innerHTML = `
         <h2 class="outline-title">${escapeHtml(meta.title)}</h2>
         <p class="outline-meta">${[meta.speaker, meta.date].filter(Boolean).map(escapeHtml).join(' · ')}</p>
         <p class="outline-passage">Main passage: <strong>${escapeHtml(outline.main_passage)}</strong></p>
+        ${pointsHtml}
     `;
 
     // Commentary cards
