@@ -40,6 +40,19 @@ def escape_latex(text: str) -> str:
     return text
 
 
+_MORPH_PREFIX = {
+    "N": "noun", "V": "verb", "A": "adj.", "ADV": "adv.",
+    "PREP": "prep.", "CONJ": "conj.", "ART": "art.", "T": "art.",
+    "P": "pron.", "PRT": "part.", "INJ": "interj.",
+}
+
+
+def _morph_label(morph: str) -> str:
+    """Convert a Berean morphology code prefix to a readable label."""
+    prefix = morph.split("-")[0].upper()
+    return _MORPH_PREFIX.get(prefix, morph.lower())
+
+
 def scripture_placeholder(reference: str, version: str, nolinks: bool = False, strongs_overlay: bool = False) -> str:
     """Generate a scripture placeholder string."""
     if nolinks:
@@ -219,6 +232,14 @@ async def generate_sermon_latex(
     \raggedright
     #2
   \end{paracol}
+}
+
+% Interlinear word unit: Greek above, linked English gloss below
+\newcommand{\intword}[3]{%
+  \begin{tabular}[t]{@{}c@{}}
+    {\greekfont\small #1}\\[1pt]
+    \hyperlink{lex-#3}{\scriptsize\textit{#2}}%
+  \end{tabular}\hspace{5pt}%
 }
 
 % Colors
