@@ -166,7 +166,7 @@ def _render_lexicon_appendix(strongs_numbers: set[str]) -> list[str]:
     lines.append(r"\newgeometry{left=10mm,right=15mm,top=15mm,bottom=10mm}")
     lines.append(r"\hypertarget{lexicon}{}")
     lines.append(r"\section{Lexicon}")
-    lines.append(r"\commentaryfont\small")
+    lines.append(r"\scripturefont\small")
     lines.append("")
 
     for num in sorted(strongs_numbers, key=lambda x: int(x)):
@@ -182,19 +182,19 @@ def _render_lexicon_appendix(strongs_numbers: set[str]) -> list[str]:
         # Header: Greek (large) + translit, G-number right-aligned
         lines.append(
             rf"{{\greekfont\large {greek}}}\quad"
-            rf"{{\wordstudy\itshape {escape_latex(translit)}}}"
-            rf"\hfill{{\wordstudy\textbf{{G{num}}}}}"
+            rf"{{\scripturefont\itshape {escape_latex(translit)}}}"
+            rf"\hfill{{\scripturefont\textbf{{G{num}}}}}"
         )
         lines.append(r"\hrule\vspace{4pt}")
         # Definition line
-        lines.append(rf"{{\wordstudy\small \textit{{{defn}}}}}")
+        lines.append(rf"{{\scripturefont\small \textit{{{defn}}}}}")
         lines.append("")
 
         # L&S block (optional)
         lsj_text = get_lsj_entry(num)
         if lsj_text:
             lines.append(
-                rf"{{\commentaryfont\small \textbf{{Liddell \& Scott}} --- "
+                rf"{{\scripturefont\small \textbf{{Liddell \& Scott}} --- "
                 rf"{escape_latex(lsj_text)}}}"
             )
             lines.append("")
