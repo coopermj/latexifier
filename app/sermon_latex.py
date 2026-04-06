@@ -177,7 +177,7 @@ def _render_lexicon_appendix(passage_words: list[dict]) -> list[str]:
     lines.append(r"\newgeometry{left=10mm,right=15mm,top=15mm,bottom=10mm}")
     lines.append(r"\hypertarget{lexicon}{}")
     lines.append(r"\section{Lexicon}")
-    lines.append(r"\scripturefont\small")
+    lines.append(r"\greekfont\small")
     lines.append("")
 
     for num in sorted(strongs_numbers, key=lambda x: int(x)):
@@ -195,12 +195,12 @@ def _render_lexicon_appendix(passage_words: list[dict]) -> list[str]:
         # Header: Greek (large) + translit, G-number right-aligned
         lines.append(
             rf"{{\greekfont\large {greek}}}\quad"
-            rf"{{\scripturefont\itshape {escape_latex(translit)}}}"
-            rf"\hfill{{\scripturefont\textbf{{G{num}}}}}"
+            rf"{{\greekfont\itshape {escape_latex(translit)}}}"
+            rf"\hfill{{\greekfont\textbf{{G{num}}}}}"
         )
         lines.append(r"\hrule\vspace{4pt}")
         # Definition line: grammatical form + Strong's definition
-        lines.append(rf"{{\scripturefont\small {escape_latex(gram)} --- \textit{{{defn}}}}}")
+        lines.append(rf"{{\greekfont\small {escape_latex(gram)} --- \textit{{{defn}}}}}")
         lines.append("")
 
         # L&S block with left rule for visual separation (optional)
@@ -208,7 +208,7 @@ def _render_lexicon_appendix(passage_words: list[dict]) -> list[str]:
         if lsj_text:
             lines.append(
                 r"\noindent{\color{gray}\vrule width 1.5pt}\hspace{6pt}"
-                rf"\parbox{{\dimexpr\linewidth-10pt}}{{\scripturefont\small "
+                rf"\parbox{{\dimexpr\linewidth-10pt}}{{\greekfont\small "
                 rf"\textbf{{Liddell \& Scott}} --- {escape_latex(lsj_text)}}}"
             )
             lines.append("")
