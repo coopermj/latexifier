@@ -103,6 +103,49 @@ def _render_table(table: Table) -> list[str]:
     return lines
 
 
+def _render_interlinear_passage(
+    words: list[dict],
+    main_passage: str,
+    scripture_version: str,
+) -> list[str]:
+    """
+    Render a 50/50 paracol block: interlinear (left) + clean ESV (right).
+
+    words: output of interlinear.get_passage_words() — each has
+           greek, lemma, strongs, gloss, morph, verse (int)
+    """
+    lines = []
+    lines.append(r"\newpage{}")
+    lines.append(r"\hypertarget{interlinear}{}")
+    lines.append(r"\columnratio{0.5}")
+    lines.append(r"\setlength{\columnsep}{1.5em}")
+    lines.append(r"\begin{paracol}{2}")
+    lines.append(r"\small\raggedright")
+    lines.append("")
+
+    # Left column: word-stacked interlinear grouped by verse
+    current_verse = None
+    for w in words:
+        if w["verse"] != current_verse:
+            if current_verse is not None:
+                lines.append("")  # spacing between verses
+            current_verse = w["verse"]
+            lines.append(rf"{{\color{{gray}}\scriptsize {current_verse}}}~")
+        greek = escape_latex(w["greek"])
+        gloss = escape_latex(w["gloss"])
+        strongs = w["strongs"]
+        lines.append(rf"\intword{{{greek}}}{{{gloss}}}{{{strongs}}}")
+
+    lines.append("")
+    lines.append(r"\switchcolumn")
+    lines.append(r"\raggedright")
+    lines.append(scripture_placeholder(main_passage, scripture_version, nolinks=True))
+    lines.append("")
+    lines.append(r"\end{paracol}")
+    lines.append(r"\newpage{}")
+    return lines
+
+
 def format_date(date_str: str | None) -> str:
     """Convert date to long format like 'January 23, 2026'."""
     if not date_str:
