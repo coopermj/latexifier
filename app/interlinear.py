@@ -1,8 +1,11 @@
 """Berean Interlinear Bible data access — NT only."""
 import json
+import logging
 import re
 from functools import lru_cache
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _NT_BOOKS = {
     "Matthew", "Mark", "Luke", "John", "Acts", "Romans",
@@ -49,6 +52,9 @@ def get_passage_words(reference: str) -> list[dict] | None:
     chapter = m.group(2)
     v_start = int(m.group(3))
     v_end = int(m.group(4)) if m.group(4) else v_start
+    if v_end < v_start:
+        logger.warning("get_passage_words: inverted verse range in %r", reference)
+        return None
 
     data = _load_berean()
     ch_data = data.get(book, {}).get(chapter, {})
