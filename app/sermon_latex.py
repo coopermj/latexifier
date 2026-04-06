@@ -7,6 +7,7 @@ from .models import SermonOutline, SermonPoint, SermonSubPoint, Table
 from .commentary import CommentarySource, fetch_commentary_for_reference, CommentaryResult
 from .scripture import fetch_scripture, ScriptureVersion, ScriptureLookupOptions
 from .lsj import get_lsj_entry
+from .interlinear import get_passage_words, is_nt_passage
 
 logger = logging.getLogger(__name__)
 
@@ -458,6 +459,11 @@ async def generate_sermon_latex(
         lines.append(rf"\includegraphics[width=0.8\textwidth,height=0.5\textheight,keepaspectratio]{{{cover_image}}}")
         lines.append(r"\end{center}")
 
+    # Determine interlinear eligibility before building TOC
+    nt_passage = include_main_passage and bool(main_passage) and is_nt_passage(main_passage)
+    passage_words = get_passage_words(main_passage) if nt_passage else None
+    interlinear_active = nt_passage and passage_words is not None
+
     # Add table of contents
     lines.append("")
     lines.append(r"\vspace{1cm}")
@@ -466,7 +472,13 @@ async def generate_sermon_latex(
     lines.append(r"\end{center}")
     lines.append(r"\begin{center}")
     lines.append(r"\begin{tabular}{l}")
+    if interlinear_active:
+        lines.append(r"\hyperlink{interlinear}{Greek Interlinear} \\[0.3cm]")
     lines.append(r"\hyperlink{sermonnotes}{Sermon Notes} \\[0.3cm]")
+    if commentary_sources or commentary_overrides is not None:
+        lines.append(r"\hyperlink{commentary}{Commentary} \\[0.3cm]")
+    if interlinear_active:
+        lines.append(r"\hyperlink{lexicon}{Lexicon} \\[0.3cm]")
     if include_bulletin:
         lines.append(r"\hyperlink{bulletin}{Sunday Bulletin} \\[0.3cm]")
     if include_prayer_requests:
@@ -478,14 +490,17 @@ async def generate_sermon_latex(
     lines.append(r"\newpage{}")
     lines.append("")
 
-    # Main passage in two columns (with Strong's overlay so ESV words link to word study)
+    # Main passage: interlinear (NT) or multicols ESV (OT/fallback)
     if include_main_passage and main_passage:
-        lines.append(r"\begin{multicols}{2}")
-        lines.append(scripture_placeholder(main_passage, scripture_version, strongs_overlay=True))
-        lines.append(r"\end{multicols}")
-        lines.append("")
-        lines.append(r"\newpage{}")
-        lines.append("")
+        if interlinear_active:
+            lines.extend(_render_interlinear_passage(passage_words, main_passage, scripture_version))
+        else:
+            lines.append(r"\begin{multicols}{2}")
+            lines.append(scripture_placeholder(main_passage, scripture_version))
+            lines.append(r"\end{multicols}")
+            lines.append("")
+            lines.append(r"\newpage{}")
+            lines.append("")
 
     # Sermon notes hypertarget for ToC link
     lines.append(r"\hypertarget{sermonnotes}{}")
@@ -519,31 +534,20 @@ async def generate_sermon_latex(
         for table in outline.tables:
             lines.extend(_render_table(table))
 
-    # Greek Word Study appendix - fetch Strong's numbers from NET Bible
-    strongs_numbers = set()
-    if main_passage:
-        try:
-            net_result = await fetch_scripture(
-                main_passage,
-                ScriptureVersion.NET,
-                ScriptureLookupOptions()
-            )
-            strongs_numbers = net_result.strongs_numbers
-            logger.info("Extracted %d Strong's numbers from %s", len(strongs_numbers), main_passage)
-        except Exception as e:
-            logger.warning("Failed to fetch Strong's numbers for %s: %s", main_passage, e)
-
-    if strongs_numbers:
-        lines.extend(_render_word_study_from_strongs(strongs_numbers))
-
     # Commentary appendix
     if commentary_sources or commentary_overrides is not None:
+        lines.append(r"\hypertarget{commentary}{}")
         commentary_lines = await _render_commentary_appendix(
             main_passage,
             commentary_sources or [],
             preloaded=commentary_overrides,
         )
         lines.extend(commentary_lines)
+
+    # Lexicon appendix (NT passages only)
+    if interlinear_active and passage_words:
+        strongs_in_passage = {w["strongs"] for w in passage_words if w.get("strongs")}
+        lines.extend(_render_lexicon_appendix(strongs_in_passage))
 
     # Include bulletin PDF if provided
     if include_bulletin:

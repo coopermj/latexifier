@@ -115,3 +115,51 @@ def test_render_lexicon_appendix_empty():
     from app.sermon_latex import _render_lexicon_appendix
     lines = _render_lexicon_appendix(set())
     assert lines == []
+
+
+@pytest.mark.asyncio
+async def test_generate_sermon_latex_ot_no_interlinear():
+    """OT passage → no interlinear hypertarget, no lexicon section."""
+    from unittest.mock import patch
+    from app.sermon_latex import generate_sermon_latex
+    from app.models import SermonOutline, SermonMetadata
+
+    outline = SermonOutline(
+        metadata=SermonMetadata(title="Test", speaker=None, date=None, series=None),
+        main_passage="Genesis 1:1",
+        points=[],
+    )
+    with patch("app.sermon_latex.fetch_scripture", side_effect=Exception("no network")):
+        latex = await generate_sermon_latex(outline, include_main_passage=True)
+
+    assert r"\hypertarget{interlinear}{}" not in latex
+    assert r"\section{Lexicon}" not in latex
+    # Fallback to multicols
+    assert r"\begin{multicols}{2}" in latex
+
+
+@pytest.mark.asyncio
+async def test_generate_sermon_latex_nt_toc_has_interlinear_and_lexicon():
+    """NT passage → TOC contains Greek Interlinear and Lexicon links."""
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from app.sermon_latex import generate_sermon_latex
+    from app.models import SermonOutline, SermonMetadata
+
+    outline = SermonOutline(
+        metadata=SermonMetadata(title="Test", speaker=None, date=None, series=None),
+        main_passage="Ephesians 4:22",
+        points=[],
+    )
+    sample_words = [
+        {"greek": "ἀποθέσθαι", "lemma": "ἀποτίθημι", "strongs": "659",
+         "gloss": "to put off", "morph": "V-AMN", "verse": 22},
+    ]
+    with patch("app.sermon_latex.get_passage_words", return_value=sample_words), \
+         patch("app.sermon_latex.fetch_scripture", side_effect=Exception("no network")):
+        latex = await generate_sermon_latex(outline, include_main_passage=True)
+
+    assert r"\hyperlink{interlinear}{Greek Interlinear}" in latex
+    assert r"\hyperlink{lexicon}{Lexicon}" in latex
+    assert r"\section{Lexicon}" in latex
+    assert r"\hypertarget{interlinear}{}" in latex
+    assert r"\begin{multicols}{2}" not in latex   # no fallback multicols for NT
