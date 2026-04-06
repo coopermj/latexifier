@@ -80,9 +80,10 @@ def test_render_lexicon_appendix_entry_structure():
     sample_lsj = {"3056": {"lemma": "λόγος", "entry": "I. the word. II. reason."}}
     sample_strongs = {"3056": {"greek": "λόγος", "translit": "lógos", "def": "a word, speech"}}
 
+    sample_words = [{"greek": "λόγος", "lemma": "λόγος", "strongs": "3056", "gloss": "word", "morph": "N-NSM", "verse": 1}]
     with patch("app.sermon_latex.STRONGS_GREEK", sample_strongs), \
          patch("app.sermon_latex.get_lsj_entry", side_effect=lambda n: sample_lsj.get(n, {}).get("entry")):
-        lines = _render_lexicon_appendix({"3056"})
+        lines = _render_lexicon_appendix(sample_words)
 
     combined = "\n".join(lines)
     assert r"\hypertarget{lex-3056}{}" in combined
@@ -100,9 +101,10 @@ def test_render_lexicon_appendix_no_lsj_still_renders():
 
     sample_strongs = {"1722": {"greek": "ἐν", "translit": "en", "def": "in, by, with"}}
 
+    sample_words = [{"greek": "ἐν", "lemma": "ἐν", "strongs": "1722", "gloss": "in", "morph": "PREP", "verse": 1}]
     with patch("app.sermon_latex.STRONGS_GREEK", sample_strongs), \
          patch("app.sermon_latex.get_lsj_entry", return_value=None):
-        lines = _render_lexicon_appendix({"1722"})
+        lines = _render_lexicon_appendix(sample_words)
 
     combined = "\n".join(lines)
     assert "ἐν" in combined
@@ -113,7 +115,7 @@ def test_render_lexicon_appendix_no_lsj_still_renders():
 
 def test_render_lexicon_appendix_empty():
     from app.sermon_latex import _render_lexicon_appendix
-    lines = _render_lexicon_appendix(set())
+    lines = _render_lexicon_appendix([])
     assert lines == []
 
 

@@ -12,6 +12,7 @@ The input is keyed by Greek lemma → HTML definition string.
 Output JSON structure:
     {"3056": {"lemma": "λόγος", "entry": "plain-text definition..."}, ...}
 """
+import html
 import json
 import re
 import sys
@@ -27,8 +28,9 @@ _TAG_RE = re.compile(r'<[^>]+>')
 MAX_ENTRY_LEN = 600
 
 
-def _clean(html: str) -> str:
-    text = _TAG_RE.sub('', html)
+def _clean(html_text: str) -> str:
+    text = _TAG_RE.sub('', html_text)
+    text = html.unescape(text)
     text = re.sub(r'\s+', ' ', text).strip()
     if len(text) > MAX_ENTRY_LEN:
         # Truncate at last sentence boundary before the limit

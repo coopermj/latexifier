@@ -148,15 +148,26 @@ def _render_interlinear_passage(
     return lines
 
 
-def _render_lexicon_appendix(strongs_numbers: set[str]) -> list[str]:
+def _render_lexicon_appendix(passage_words: list[dict]) -> list[str]:
     """
     Render the Lexicon section with one rich entry per unique Strong's number.
 
     Entry format:
       Greek (large) + transliteration  [right-aligned: G-number]
-      Strong's definition
+      grammatical form --- Strong's definition (italic)
       L&S: <entry text>   (omitted if no LSJ entry exists)
     """
+    if not passage_words:
+        return []
+
+    # Build Strong's → first morph code seen (for grammatical label)
+    morph_for: dict[str, str] = {}
+    for w in passage_words:
+        num = w.get("strongs", "")
+        if num and num not in morph_for:
+            morph_for[num] = w.get("morph", "")
+
+    strongs_numbers = {w["strongs"] for w in passage_words if w.get("strongs")}
     if not strongs_numbers:
         return []
 
@@ -177,7 +188,9 @@ def _render_lexicon_appendix(strongs_numbers: set[str]) -> list[str]:
         greek    = entry.get("greek", "")
         translit = entry.get("translit", "")
         defn     = escape_latex(entry.get("def", ""))
+        gram     = _morph_label(morph_for.get(num, ""))
 
+        lines.append(r"\vspace{12pt}")
         lines.append(rf"\hypertarget{{lex-{num}}}{{}}")
         # Header: Greek (large) + translit, G-number right-aligned
         lines.append(
@@ -186,16 +199,17 @@ def _render_lexicon_appendix(strongs_numbers: set[str]) -> list[str]:
             rf"\hfill{{\scripturefont\textbf{{G{num}}}}}"
         )
         lines.append(r"\hrule\vspace{4pt}")
-        # Definition line
-        lines.append(rf"{{\scripturefont\small \textit{{{defn}}}}}")
+        # Definition line: grammatical form + Strong's definition
+        lines.append(rf"{{\scripturefont\small {escape_latex(gram)} --- \textit{{{defn}}}}}")
         lines.append("")
 
-        # L&S block (optional)
+        # L&S block with left rule for visual separation (optional)
         lsj_text = get_lsj_entry(num)
         if lsj_text:
             lines.append(
-                rf"{{\scripturefont\small \textbf{{Liddell \& Scott}} --- "
-                rf"{escape_latex(lsj_text)}}}"
+                r"\noindent{\color{gray}\vrule width 1.5pt}\hspace{6pt}"
+                rf"\parbox{{\dimexpr\linewidth-10pt}}{{\scripturefont\small "
+                rf"\textbf{{Liddell \& Scott}} --- {escape_latex(lsj_text)}}}"
             )
             lines.append("")
 
@@ -546,8 +560,7 @@ async def generate_sermon_latex(
 
     # Lexicon appendix (NT passages only)
     if interlinear_active and passage_words:
-        strongs_in_passage = {w["strongs"] for w in passage_words if w.get("strongs")}
-        lines.extend(_render_lexicon_appendix(strongs_in_passage))
+        lines.extend(_render_lexicon_appendix(passage_words))
 
     # Include bulletin PDF if provided
     if include_bulletin:
