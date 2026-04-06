@@ -71,3 +71,47 @@ def test_render_interlinear_passage_structure():
     assert r"{\color{gray}\scriptsize 2}" in combined
     # ESV placeholder in right column (nolinks=true for paracol)
     assert "[[scripture:John 1:1-2|ESV|nolinks=true]]" in combined
+
+
+def test_render_lexicon_appendix_entry_structure():
+    from unittest.mock import patch
+    from app.sermon_latex import _render_lexicon_appendix
+
+    sample_lsj = {"3056": {"lemma": "λόγος", "entry": "I. the word. II. reason."}}
+    sample_strongs = {"3056": {"greek": "λόγος", "translit": "lógos", "def": "a word, speech"}}
+
+    with patch("app.sermon_latex.STRONGS_GREEK", sample_strongs), \
+         patch("app.sermon_latex.get_lsj_entry", side_effect=lambda n: sample_lsj.get(n, {}).get("entry")):
+        lines = _render_lexicon_appendix({"3056"})
+
+    combined = "\n".join(lines)
+    assert r"\hypertarget{lex-3056}{}" in combined
+    assert "λόγος" in combined
+    assert "lógos" in combined
+    assert "G3056" in combined
+    assert "a word, speech" in combined
+    assert "I. the word. II. reason." in combined
+    assert r"\section{Lexicon}" in combined
+
+
+def test_render_lexicon_appendix_no_lsj_still_renders():
+    from unittest.mock import patch
+    from app.sermon_latex import _render_lexicon_appendix
+
+    sample_strongs = {"1722": {"greek": "ἐν", "translit": "en", "def": "in, by, with"}}
+
+    with patch("app.sermon_latex.STRONGS_GREEK", sample_strongs), \
+         patch("app.sermon_latex.get_lsj_entry", return_value=None):
+        lines = _render_lexicon_appendix({"1722"})
+
+    combined = "\n".join(lines)
+    assert "ἐν" in combined
+    assert "in, by, with" in combined
+    # No L&S block for words with no LSJ entry
+    assert "Liddell" not in combined
+
+
+def test_render_lexicon_appendix_empty():
+    from app.sermon_latex import _render_lexicon_appendix
+    lines = _render_lexicon_appendix(set())
+    assert lines == []

@@ -6,6 +6,7 @@ from pathlib import Path
 from .models import SermonOutline, SermonPoint, SermonSubPoint, Table
 from .commentary import CommentarySource, fetch_commentary_for_reference, CommentaryResult
 from .scripture import fetch_scripture, ScriptureVersion, ScriptureLookupOptions
+from .lsj import get_lsj_entry
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,64 @@ def _render_interlinear_passage(
     lines.append("")
     lines.append(r"\end{paracol}")
     lines.append(r"\newpage{}")
+    return lines
+
+
+def _render_lexicon_appendix(strongs_numbers: set[str]) -> list[str]:
+    """
+    Render the Lexicon section with one rich entry per unique Strong's number.
+
+    Entry format:
+      Greek (large) + transliteration  [right-aligned: G-number]
+      Strong's definition
+      L&S: <entry text>   (omitted if no LSJ entry exists)
+    """
+    if not strongs_numbers:
+        return []
+
+    lines = []
+    lines.append("")
+    lines.append(r"\newpage{}")
+    lines.append(r"\newgeometry{left=10mm,right=15mm,top=15mm,bottom=10mm}")
+    lines.append(r"\hypertarget{lexicon}{}")
+    lines.append(r"\section{Lexicon}")
+    lines.append(r"\commentaryfont\small")
+    lines.append("")
+
+    for num in sorted(strongs_numbers, key=lambda x: int(x)):
+        entry = STRONGS_GREEK.get(num)
+        if not entry:
+            continue
+
+        greek    = entry.get("greek", "")
+        translit = entry.get("translit", "")
+        defn     = escape_latex(entry.get("def", ""))
+
+        lines.append(rf"\hypertarget{{lex-{num}}}{{}}")
+        # Header: Greek (large) + translit, G-number right-aligned
+        lines.append(
+            rf"{{\greekfont\large {greek}}}\quad"
+            rf"{{\wordstudy\itshape {escape_latex(translit)}}}"
+            rf"\hfill{{\wordstudy\textbf{{G{num}}}}}"
+        )
+        lines.append(r"\hrule\vspace{4pt}")
+        # Definition line
+        lines.append(rf"{{\wordstudy\small \textit{{{defn}}}}}")
+        lines.append("")
+
+        # L&S block (optional)
+        lsj_text = get_lsj_entry(num)
+        if lsj_text:
+            lines.append(
+                rf"{{\commentaryfont\small \textbf{{Liddell \& Scott}} --- "
+                rf"{escape_latex(lsj_text)}}}"
+            )
+            lines.append("")
+
+        lines.append(r"\medskip")
+        lines.append("")
+
+    lines.append(r"\restoregeometry")
     return lines
 
 
