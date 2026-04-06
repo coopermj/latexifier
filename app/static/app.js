@@ -228,32 +228,52 @@ function showExtractError(msg) {
 
 // ─── Step 2: Review ───────────────────────────────────────────────────────────
 function renderReviewStep(outline, candidates) {
-    // Outline summary
     const meta = outline.metadata;
     const summaryEl = document.getElementById('outline-summary');
 
     let pointsHtml = '';
     if (outline.points && outline.points.length > 0) {
-        pointsHtml = '<ol class="outline-points">' + outline.points.map(pt => {
+        pointsHtml = '<ol class="outline-points">' + outline.points.map((pt, pi) => {
             let subHtml = '';
             if (pt.sub_points && pt.sub_points.length > 0) {
-                subHtml = '<ol class="outline-subpoints">' + pt.sub_points.map(sub => {
-                    const label = sub.label ? `${sub.label}. ` : '';
-                    const title = sub.title || sub.content || '';
-                    const verse = sub.scripture_verse
-                        ? `<span class="verse-tag">${escapeHtml(sub.scripture_verse)}</span>`
-                        : '';
-                    return `<li>${label}${escapeHtml(title)}${verse}</li>`;
+                subHtml = '<ol class="outline-subpoints">' + pt.sub_points.map((sub, si) => {
+                    const label = sub.label ? `<span class="sub-label">${escapeHtml(sub.label)}.</span> ` : '';
+                    const text = sub.title || sub.content || '';
+                    const verseVal = sub.scripture_verse || '';
+                    const verseClass = verseVal ? 'verse-tag editable' : 'verse-tag editable verse-tag-empty';
+                    return `<li>
+                        ${label}<span contenteditable="true" class="editable sub-text"
+                            data-edit-point="${pi}" data-edit-sub="${si}" data-edit-field="title"
+                        >${escapeHtml(text)}</span>
+                        <span contenteditable="true" class="${verseClass}"
+                            data-edit-point="${pi}" data-edit-sub="${si}" data-edit-field="scripture_verse"
+                            data-placeholder="+ verse"
+                        >${escapeHtml(verseVal)}</span>
+                    </li>`;
                 }).join('') + '</ol>';
             }
-            return `<li><strong>${escapeHtml(pt.title || '')}</strong>${subHtml}</li>`;
+            return `<li>
+                <strong contenteditable="true" class="editable point-title" data-edit-point="${pi}"
+                >${escapeHtml(pt.title || '')}</strong>${subHtml}
+            </li>`;
         }).join('') + '</ol>';
     }
 
     summaryEl.innerHTML = `
-        <h2 class="outline-title">${escapeHtml(meta.title)}</h2>
-        <p class="outline-meta">${[meta.speaker, meta.date].filter(Boolean).map(escapeHtml).join(' · ')}</p>
-        <p class="outline-passage">Main passage: <strong>${escapeHtml(outline.main_passage)}</strong></p>
+        <div class="edit-meta-grid">
+            <label class="edit-meta-label">Title
+                <input id="edit-title" type="text" class="edit-input" value="${escapeHtml(meta.title || '')}">
+            </label>
+            <label class="edit-meta-label">Passage
+                <input id="edit-passage" type="text" class="edit-input" value="${escapeHtml(outline.main_passage || '')}">
+            </label>
+            <label class="edit-meta-label">Speaker
+                <input id="edit-speaker" type="text" class="edit-input" value="${escapeHtml(meta.speaker || '')}">
+            </label>
+            <label class="edit-meta-label">Date
+                <input id="edit-date" type="text" class="edit-input" value="${escapeHtml(meta.date || '')}">
+            </label>
+        </div>
         ${pointsHtml}
     `;
 
@@ -353,7 +373,7 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
             image: coverImageBase64,
             bulletin_pdf: bulletinPdfBase64,
             prayer_pdf: prayerPdfBase64,
-            outline: extractedOutline,
+            outline: collectEditedOutline(),
             commentary_overrides: commentaryOverrides,
         };
 
@@ -403,6 +423,37 @@ document.getElementById('start-over-btn').addEventListener('click', () => {
     document.getElementById('select-all-commentaries').textContent = 'Select all';
     showStep(1);
 });
+
+// ─── Collect edited outline from DOM ─────────────────────────────────────────
+function collectEditedOutline() {
+    const outline = JSON.parse(JSON.stringify(extractedOutline));
+    outline.metadata.title    = document.getElementById('edit-title').value.trim() || null;
+    outline.metadata.speaker  = document.getElementById('edit-speaker').value.trim() || null;
+    outline.metadata.date     = document.getElementById('edit-date').value.trim() || null;
+    outline.main_passage      = document.getElementById('edit-passage').value.trim() || outline.main_passage;
+
+    // Point titles
+    document.querySelectorAll('[data-edit-point]:not([data-edit-sub])').forEach(el => {
+        const pi = parseInt(el.dataset.editPoint, 10);
+        if (outline.points[pi]) {
+            outline.points[pi].title = el.textContent.trim() || outline.points[pi].title;
+        }
+    });
+
+    // Sub-point fields (title and scripture_verse)
+    document.querySelectorAll('[data-edit-point][data-edit-sub]').forEach(el => {
+        const pi    = parseInt(el.dataset.editPoint, 10);
+        const si    = parseInt(el.dataset.editSub, 10);
+        const field = el.dataset.editField;
+        const sub   = outline.points[pi]?.sub_points[si];
+        if (sub !== undefined) {
+            const val = el.textContent.trim();
+            sub[field] = val || null;
+        }
+    });
+
+    return outline;
+}
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function escapeHtml(str) {
