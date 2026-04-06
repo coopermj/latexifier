@@ -194,6 +194,7 @@ def _render_lexicon_appendix(passage_words: list[dict]) -> list[str]:
 
         lines.append(r"\vspace{8pt}")
         lines.append(r"\begin{minipage}{\linewidth}")
+        lines.append(r"\raggedright")
         lines.append(rf"\hypertarget{{lex-{num}}}{{}}")
         # Header: Greek (large) + translit, G-number right-aligned
         lines.append(
@@ -210,7 +211,7 @@ def _render_lexicon_appendix(passage_words: list[dict]) -> list[str]:
             lines.append(r"\smallskip")
             lines.append(
                 r"\noindent{\color{gray}\vrule width 1.5pt}\hspace{6pt}"
-                rf"\parbox{{\dimexpr\linewidth-10pt}}{{\greekfont\small "
+                rf"\parbox{{\dimexpr\linewidth-10pt}}{{\raggedright\greekfont\small "
                 rf"\textbf{{Liddell \& Scott}} --- {escape_latex(lsj_text)}}}"
             )
 
