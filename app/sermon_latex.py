@@ -190,7 +190,10 @@ def _render_lexicon_appendix(passage_words: list[dict]) -> list[str]:
         defn     = escape_latex(entry.get("def", ""))
         gram     = _morph_label(morph_for.get(num, ""))
 
-        lines.append(r"\vspace{12pt}")
+        lsj_text = get_lsj_entry(num)
+
+        lines.append(r"\vspace{8pt}")
+        lines.append(r"\begin{minipage}{\linewidth}")
         lines.append(rf"\hypertarget{{lex-{num}}}{{}}")
         # Header: Greek (large) + translit, G-number right-aligned
         lines.append(
@@ -201,20 +204,17 @@ def _render_lexicon_appendix(passage_words: list[dict]) -> list[str]:
         lines.append(r"\hrule\vspace{4pt}")
         # Definition line: grammatical form + Strong's definition
         lines.append(rf"{{\greekfont\small {escape_latex(gram)} --- \textit{{{defn}}}}}")
-        lines.append("")
 
         # L&S block with left rule for visual separation (optional)
-        lsj_text = get_lsj_entry(num)
         if lsj_text:
+            lines.append(r"\smallskip")
             lines.append(
                 r"\noindent{\color{gray}\vrule width 1.5pt}\hspace{6pt}"
                 rf"\parbox{{\dimexpr\linewidth-10pt}}{{\greekfont\small "
                 rf"\textbf{{Liddell \& Scott}} --- {escape_latex(lsj_text)}}}"
             )
-            lines.append("")
 
-        lines.append(r"\medskip")
-        lines.append("")
+        lines.append(r"\end{minipage}")
 
     lines.append(r"\restoregeometry")
     return lines
