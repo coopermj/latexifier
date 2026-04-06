@@ -22,8 +22,9 @@ build/
 .DS_Store
 Thumbs.db
 
-# Local data
+# Local data (berean_nt.json is committed; exclude everything else in data/)
 /data/
+!/data/berean_nt.json
 *.pdf
 *.aux
 *.log

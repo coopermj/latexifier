@@ -77,12 +77,20 @@ def process_file(xml_path: str, strongs_map: dict, out: dict) -> int:
     )
 
     for entry in entries:
-        # Get headword: try <head> child, then 'key' attribute, then 'n' attribute
+        # Get headword: try <head>, then <orth extent="full">, then key/n attribute
         head_el = entry.find("{*}head") or entry.find("head")
         if head_el is not None:
             headword_raw = (head_el.text or "").strip()
         else:
-            headword_raw = entry.get("key", entry.get("n", "")).strip()
+            orth_el = entry.find(".//{*}orth[@extent='full']") or entry.find(".//orth[@extent='full']")
+            if orth_el is None:
+                orth_el = entry.find("{*}orth") or entry.find("orth")
+            if orth_el is not None and (orth_el.text or "").strip():
+                headword_raw = orth_el.text.strip()
+            else:
+                headword_raw = entry.get("key", entry.get("n", "")).strip()
+                # Strip trailing disambiguation digits/numbers (e.g. "ἵ1" → "ἵ")
+                headword_raw = re.sub(r'\d+$', '', headword_raw).strip()
 
         if not headword_raw:
             continue
