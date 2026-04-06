@@ -670,4 +670,65 @@ input[type="file"] {
 }
 
 #generate-btn:hover:not(:disabled) { background: #600060; }
+
+/* ─── Outline editing ───────────────────────────────────────────────────────── */
+.edit-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem 1.25rem;
+    margin-bottom: 1.25rem;
+}
+
+.edit-meta-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #888;
+}
+
+.edit-input {
+    padding: 0.1rem 0;
+    font-size: 0.95rem;
+    font-family: inherit;
+    color: #333;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    border-radius: 0;
+    outline: none;
+    width: 100%;
+    transition: border-color 0.15s;
+}
+
+.edit-input:hover {
+    border-bottom-color: #ddd;
+}
+
+.edit-input:focus {
+    border-bottom-color: #800080;
+}
+
+.editable {
+    border-bottom: 1px dashed #ccc;
+    outline: none;
+    transition: border-color 0.15s, background 0.15s;
+    border-radius: 2px;
+    padding: 1px 3px;
+}
+
+.editable:focus {
+    border-bottom-color: #800080;
+    background: #fdf5ff;
+}
+
+.verse-tag-empty::before {
+    content: attr(data-placeholder);
+    color: #bbb;
+    font-style: italic;
+    pointer-events: none;
+}
 #generate-btn:disabled { background: #999; cursor: not-allowed; }

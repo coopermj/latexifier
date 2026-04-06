@@ -6,6 +6,8 @@ from pathlib import Path
 from .models import SermonOutline, SermonPoint, SermonSubPoint, Table
 from .commentary import CommentarySource, fetch_commentary_for_reference, CommentaryResult
 from .scripture import fetch_scripture, ScriptureVersion, ScriptureLookupOptions
+from .lsj import get_lsj_entry
+from .interlinear import get_passage_words, is_nt_passage
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,19 @@ def escape_latex(text: str) -> str:
     for old, new in replacements:
         text = text.replace(old, new)
     return text
+
+
+_MORPH_PREFIX = {
+    "N": "noun", "V": "verb", "A": "adj.", "ADV": "adv.",
+    "PREP": "prep.", "CONJ": "conj.", "ART": "art.", "T": "art.",
+    "P": "pron.", "PRT": "part.", "INJ": "interj.",
+}
+
+
+def _morph_label(morph: str) -> str:
+    """Convert a Berean morphology code prefix to a readable label."""
+    prefix = morph.split("-")[0].upper()
+    return _MORPH_PREFIX.get(prefix, morph.lower())
 
 
 def scripture_placeholder(reference: str, version: str, nolinks: bool = False, strongs_overlay: bool = False) -> str:
@@ -87,6 +102,122 @@ def _render_table(table: Table) -> list[str]:
     lines.append(r"\vspace{0.5cm}")
     lines.append("")
 
+    return lines
+
+
+def _render_interlinear_passage(
+    words: list[dict],
+    main_passage: str,
+    scripture_version: str,
+) -> list[str]:
+    """
+    Render a 50/50 paracol block: interlinear (left) + clean ESV (right).
+
+    words: output of interlinear.get_passage_words() — each has
+           greek, lemma, strongs, gloss, morph, verse (int)
+    """
+    lines = []
+    lines.append(r"\newpage{}")
+    lines.append(r"\hypertarget{interlinear}{}")
+    lines.append(r"\columnratio{0.5}")
+    lines.append(r"\setlength{\columnsep}{1.5em}")
+    lines.append(r"\begin{paracol}{2}")
+    lines.append(r"\small\raggedright")
+    lines.append("")
+
+    # Left column: word-stacked interlinear grouped by verse
+    current_verse = None
+    for w in words:
+        if w["verse"] != current_verse:
+            if current_verse is not None:
+                lines.append("")  # spacing between verses
+            current_verse = w["verse"]
+            lines.append(rf"{{\color{{gray}}\scriptsize {current_verse}}}~")
+        greek = escape_latex(w["greek"])
+        gloss = escape_latex(w["gloss"])
+        strongs = w["strongs"]
+        lines.append(rf"\intword{{{greek}}}{{{gloss}}}{{{strongs}}}")
+
+    lines.append("")
+    lines.append(r"\switchcolumn")
+    lines.append(r"\raggedright")
+    lines.append(scripture_placeholder(main_passage, scripture_version, nolinks=True))
+    lines.append("")
+    lines.append(r"\end{paracol}")
+    lines.append(r"\newpage{}")
+    return lines
+
+
+def _render_lexicon_appendix(passage_words: list[dict]) -> list[str]:
+    """
+    Render the Lexicon section with one rich entry per unique Strong's number.
+
+    Entry format:
+      Greek (large) + transliteration  [right-aligned: G-number]
+      grammatical form --- Strong's definition (italic)
+      L&S: <entry text>   (omitted if no LSJ entry exists)
+    """
+    if not passage_words:
+        return []
+
+    # Build Strong's → first morph code seen (for grammatical label)
+    morph_for: dict[str, str] = {}
+    for w in passage_words:
+        num = w.get("strongs", "")
+        if num and num not in morph_for:
+            morph_for[num] = w.get("morph", "")
+
+    strongs_numbers = {w["strongs"] for w in passage_words if w.get("strongs")}
+    if not strongs_numbers:
+        return []
+
+    lines = []
+    lines.append("")
+    lines.append(r"\newpage{}")
+    lines.append(r"\newgeometry{left=10mm,right=15mm,top=15mm,bottom=10mm}")
+    lines.append(r"\hypertarget{lexicon}{}")
+    lines.append(r"\section{Lexicon}")
+    lines.append(r"\greekfont\small")
+    lines.append("")
+
+    for num in sorted(strongs_numbers, key=lambda x: int(x)):
+        entry = STRONGS_GREEK.get(num)
+        if not entry:
+            continue
+
+        greek    = entry.get("greek", "")
+        translit = entry.get("translit", "")
+        defn     = escape_latex(entry.get("def", ""))
+        gram     = _morph_label(morph_for.get(num, ""))
+
+        lsj_text = get_lsj_entry(num)
+
+        lines.append(r"\vspace{8pt}")
+        lines.append(r"\begin{minipage}{\linewidth}")
+        lines.append(r"\raggedright")
+        lines.append(rf"\hypertarget{{lex-{num}}}{{}}")
+        # Header: Greek (large) + translit, G-number right-aligned
+        lines.append(
+            rf"{{\greekfont\large {greek}}}\quad"
+            rf"{{\greekfont\itshape {escape_latex(translit)}}}"
+            rf"\hfill{{\greekfont\textbf{{G{num}}}}}"
+        )
+        lines.append(r"\hrule\vspace{4pt}")
+        # Definition line: grammatical form + Strong's definition
+        lines.append(rf"{{\greekfont\small {escape_latex(gram)} --- \textit{{{defn}}}}}")
+
+        # L&S block with left rule for visual separation (optional)
+        if lsj_text:
+            lines.append(r"\smallskip")
+            lines.append(
+                r"\noindent{\color{gray}\vrule width 1.5pt}\hspace{6pt}"
+                rf"\parbox{{\dimexpr\linewidth-10pt}}{{\raggedright\greekfont\small "
+                rf"\textbf{{Liddell \& Scott}} --- {escape_latex(lsj_text)}}}"
+            )
+
+        lines.append(r"\end{minipage}")
+
+    lines.append(r"\restoregeometry")
     return lines
 
 
@@ -221,6 +352,14 @@ async def generate_sermon_latex(
   \end{paracol}
 }
 
+% Interlinear word unit: Greek above, linked English gloss below
+\newcommand{\intword}[3]{%
+  \begin{tabular}[t]{@{}c@{}}
+    {\greekfont\small #1}\\[1pt]
+    \hyperlink{lex-#3}{\scriptsize\textit{#2}}%
+  \end{tabular}\hspace{5pt}%
+}
+
 % Colors
 \definecolor{light}{HTML}{E6E6FA}
 \definecolor{highlight}{HTML}{800080}
@@ -335,6 +474,11 @@ async def generate_sermon_latex(
         lines.append(rf"\includegraphics[width=0.8\textwidth,height=0.5\textheight,keepaspectratio]{{{cover_image}}}")
         lines.append(r"\end{center}")
 
+    # Determine interlinear eligibility before building TOC
+    nt_passage = include_main_passage and bool(main_passage) and is_nt_passage(main_passage)
+    passage_words = get_passage_words(main_passage) if nt_passage else None
+    interlinear_active = nt_passage and passage_words is not None
+
     # Add table of contents
     lines.append("")
     lines.append(r"\vspace{1cm}")
@@ -343,7 +487,13 @@ async def generate_sermon_latex(
     lines.append(r"\end{center}")
     lines.append(r"\begin{center}")
     lines.append(r"\begin{tabular}{l}")
+    if interlinear_active:
+        lines.append(r"\hyperlink{interlinear}{Greek Interlinear} \\[0.3cm]")
     lines.append(r"\hyperlink{sermonnotes}{Sermon Notes} \\[0.3cm]")
+    if commentary_sources or commentary_overrides is not None:
+        lines.append(r"\hyperlink{commentary}{Commentary} \\[0.3cm]")
+    if interlinear_active:
+        lines.append(r"\hyperlink{lexicon}{Lexicon} \\[0.3cm]")
     if include_bulletin:
         lines.append(r"\hyperlink{bulletin}{Sunday Bulletin} \\[0.3cm]")
     if include_prayer_requests:
@@ -355,14 +505,17 @@ async def generate_sermon_latex(
     lines.append(r"\newpage{}")
     lines.append("")
 
-    # Main passage in two columns (with Strong's overlay so ESV words link to word study)
+    # Main passage: interlinear (NT) or multicols ESV (OT/fallback)
     if include_main_passage and main_passage:
-        lines.append(r"\begin{multicols}{2}")
-        lines.append(scripture_placeholder(main_passage, scripture_version, strongs_overlay=True))
-        lines.append(r"\end{multicols}")
-        lines.append("")
-        lines.append(r"\newpage{}")
-        lines.append("")
+        if interlinear_active:
+            lines.extend(_render_interlinear_passage(passage_words, main_passage, scripture_version))
+        else:
+            lines.append(r"\begin{multicols}{2}")
+            lines.append(scripture_placeholder(main_passage, scripture_version))
+            lines.append(r"\end{multicols}")
+            lines.append("")
+            lines.append(r"\newpage{}")
+            lines.append("")
 
     # Sermon notes hypertarget for ToC link
     lines.append(r"\hypertarget{sermonnotes}{}")
@@ -396,31 +549,19 @@ async def generate_sermon_latex(
         for table in outline.tables:
             lines.extend(_render_table(table))
 
-    # Greek Word Study appendix - fetch Strong's numbers from NET Bible
-    strongs_numbers = set()
-    if main_passage:
-        try:
-            net_result = await fetch_scripture(
-                main_passage,
-                ScriptureVersion.NET,
-                ScriptureLookupOptions()
-            )
-            strongs_numbers = net_result.strongs_numbers
-            logger.info("Extracted %d Strong's numbers from %s", len(strongs_numbers), main_passage)
-        except Exception as e:
-            logger.warning("Failed to fetch Strong's numbers for %s: %s", main_passage, e)
-
-    if strongs_numbers:
-        lines.extend(_render_word_study_from_strongs(strongs_numbers))
-
     # Commentary appendix
     if commentary_sources or commentary_overrides is not None:
+        lines.append(r"\hypertarget{commentary}{}")
         commentary_lines = await _render_commentary_appendix(
             main_passage,
             commentary_sources or [],
             preloaded=commentary_overrides,
         )
         lines.extend(commentary_lines)
+
+    # Lexicon appendix (NT passages only)
+    if interlinear_active and passage_words:
+        lines.extend(_render_lexicon_appendix(passage_words))
 
     # Include bulletin PDF if provided
     if include_bulletin:
