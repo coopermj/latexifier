@@ -55,6 +55,7 @@ def _morph_label(morph: str) -> str:
     return _MORPH_PREFIX.get(prefix, morph.lower())
 
 
+
 def scripture_placeholder(reference: str, version: str, nolinks: bool = False, strongs_overlay: bool = False) -> str:
     """Generate a scripture placeholder string."""
     if nolinks:
@@ -399,10 +400,7 @@ async def generate_sermon_latex(
 \newfontfamily\wordstudy{Times New Roman}
 \newfontfamily\greekfont{Times New Roman}
 \newfontfamily\josefin{Josefin Sans}
-\newfontfamily\commentaryfont{BanglaMN.ttf}[
-  Path = ./,
-  BoldFont = BanglaMN-Bold.ttf
-]
+\newfontfamily\commentaryfont{Helvetica Neue}[BoldFont = {Helvetica Neue Bold}]
 \IfFontExistsTF{Autumn in November}
   {\newfontfamily\qtcoronation{Autumn in November}}
   {\IfFontExistsTF{Snell Roundhand}
@@ -469,9 +467,9 @@ async def generate_sermon_latex(
     # Add cover image if provided
     if cover_image:
         lines.append("")
-        lines.append(r"\vspace{1cm}")
+        lines.append(r"\vfill")
         lines.append(r"\begin{center}")
-        lines.append(rf"\includegraphics[width=0.8\textwidth,height=0.5\textheight,keepaspectratio]{{{cover_image}}}")
+        lines.append(rf"\includegraphics[width=0.75\textwidth,height=0.38\textheight,keepaspectratio]{{{cover_image}}}")
         lines.append(r"\end{center}")
 
     # Determine interlinear eligibility before building TOC
@@ -479,9 +477,9 @@ async def generate_sermon_latex(
     passage_words = get_passage_words(main_passage) if nt_passage else None
     interlinear_active = nt_passage and passage_words is not None
 
-    # Add table of contents
+    # Add table of contents — vfill when image present (distributes space), fixed gap otherwise
     lines.append("")
-    lines.append(r"\vspace{1cm}")
+    lines.append(r"\vfill" if cover_image else r"\vspace{1.5cm}")
     lines.append(r"\begin{center}")
     lines.append(r"{\josefin\large\textbf{Contents}}")
     lines.append(r"\end{center}")

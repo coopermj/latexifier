@@ -166,3 +166,24 @@ def list_entries_for_verse(
             (commentary_id, book, chapter, verse, verse),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def list_entries_for_verse_range(
+    commentary_id: int, book: str, chapter: int, verse_start: int, verse_end: int
+) -> List[Dict[str, object]]:
+    """Return all entries that overlap [verse_start, verse_end] (inclusive)."""
+    with _connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT verse_start, verse_end, text
+            FROM entries
+            WHERE commentary_id = ?
+              AND book = ?
+              AND chapter = ?
+              AND verse_start <= ?
+              AND verse_end >= ?
+            ORDER BY verse_start, verse_end
+            """,
+            (commentary_id, book, chapter, verse_end, verse_start),
+        ).fetchall()
+    return [dict(r) for r in rows]

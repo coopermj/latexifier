@@ -224,7 +224,7 @@ async def fetch_commentary_for_reference(
 
     For verse-specific references (John 3:16), fetches verse commentary.
     For chapter references (Genesis 1), fetches chapter commentary.
-    For verse ranges (Romans 8:1-4), fetches the first verse's commentary.
+    For verse ranges (Romans 8:1-4), fetches all entries overlapping the range.
     """
     try:
         book, chapter, verse_start, verse_end = _parse_reference(reference)
@@ -232,10 +232,42 @@ async def fetch_commentary_for_reference(
         logger.warning("Could not parse reference for commentary: %s", reference)
         return None
 
-    if verse_start is not None:
-        return await fetch_verse_commentary(source, book, chapter, verse_start)
-    else:
+    if verse_start is None:
         return await fetch_chapter_commentary(source, book, chapter)
+
+    # Single verse
+    if verse_start == verse_end:
+        return await fetch_verse_commentary(source, book, chapter, verse_start)
+
+    # Verse range — fetch all overlapping entries
+    try:
+        commentary_id, name = _resolve_commentary(source)
+        canonical_book = commentariat_db.normalize_book(book)
+        rows = commentariat_db.list_entries_for_verse_range(
+            commentary_id, canonical_book, chapter, verse_start, verse_end
+        )
+        entries = [
+            CommentaryEntry(
+                verse_start=r["verse_start"],
+                verse_end=r["verse_end"],
+                text=clean_commentary_text(r["text"]),
+            )
+            for r in rows
+        ]
+        if not entries:
+            return None
+        return CommentaryResult(
+            source=source,
+            source_name=name,
+            book=canonical_book,
+            chapter=chapter,
+            verse=verse_start,
+            entries=entries,
+        )
+    except Exception as exc:
+        logger.warning("Commentary lookup error for %s %s:%s-%s (%s): %s",
+                       book, chapter, verse_start, verse_end, source.value, exc)
+        return None
 
 
 async def fetch_all_commentaries_for_reference(

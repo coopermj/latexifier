@@ -36,6 +36,7 @@ For scripture references:
 - Use standard format: "Book Chapter:Verse" or "Book Chapter:Verse-Verse"
 - Include book numbers: "1 John 3:16" not "I John 3:16"
 - Keep the parenthetical reference in the content text as well
+- IMPORTANT: When a main point title ends with a parenthetical verse range like "(vv 11-12)" or "(13-15)", extract that range into the point's scripture_refs as the fully-qualified reference (e.g., "Titus 2:11-12"). This signals that the point covers those verses and scripture will be displayed alongside it.
 
 For scripture_verse matching (sub-points to main passage):
 - The main_passage defines the passage being preached (e.g., "Ephesians 4:22-25")
@@ -45,6 +46,7 @@ For scripture_verse matching (sub-points to main passage):
 - If a sub-point spans multiple consecutive verses, use a range: "Ephesians 4:22-23"
 - If you cannot determine which verse a sub-point addresses, leave scripture_verse as null
 - Do NOT put parenthetical cross-references into scripture_verse — those belong in scripture_refs only
+- SAME RULE FOR POINTS WITH NO SUB-POINTS: if a point title ends with "(vv N-N)", put the fully-qualified ref in that point's scripture_refs
 
 LAYOUT HINTS (for rendering):
 - Sub-points WITH scripture_verse OR scripture_refs will show scripture on left, notes on right (two-column)
@@ -67,7 +69,7 @@ TABLE FORMAT:
 IMPORTANT STRUCTURE RULES:
 - Use "bullets" at the POINT level for simple bullet lists (●, -, •) WITHOUT sub-points
 - Use "sub_points" when items are lettered (A, B, C) OR numbered (1, 2, 3) under a section heading — use the original label ("A" or "1") as the label field
-- IMPORTANT: When numbered items have parenthetical scripture references, ALWAYS use sub_points so each item gets its own page with scripture displayed alongside it
+- IMPORTANT: When numbered items appear UNDER A HEADING and have parenthetical scripture references, ALWAYS use sub_points so each item gets its own page with scripture displayed alongside it. Exception: if the numbered items ARE the top-level structure with no parent heading, they are separate main points (not sub_points).
 - Points with just prose content use "content" field
 - Numbered items WITHOUT scripture references and WITHOUT a parent heading use "numbered_items"
 
