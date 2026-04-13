@@ -53,6 +53,21 @@ class CommentaryLookupError(Exception):
     """Raised when commentary lookup fails."""
 
 
+def _collapse_duplicate_entries(entries: list[CommentaryEntry]) -> list[CommentaryEntry]:
+    """Merge adjacent entries when the cleaned commentary text is identical."""
+    if not entries:
+        return []
+
+    collapsed: list[CommentaryEntry] = [entries[0]]
+    for entry in entries[1:]:
+        previous = collapsed[-1]
+        if previous.text == entry.text and entry.verse_start <= previous.verse_end + 1:
+            previous.verse_end = max(previous.verse_end, entry.verse_end)
+            continue
+        collapsed.append(entry)
+    return collapsed
+
+
 def _parse_reference(reference: str) -> tuple[str, int, int | None, int | None]:
     """
     Parse a scripture reference into (book, chapter, verse_start, verse_end).
@@ -155,6 +170,8 @@ async def fetch_verse_commentary(
             for r in rows
         ]
 
+        entries = _collapse_duplicate_entries(entries)
+
         if not entries:
             return None
 
@@ -197,6 +214,8 @@ async def fetch_chapter_commentary(
             )
             for r in rows
         ]
+
+        entries = _collapse_duplicate_entries(entries)
 
         if not entries:
             return None
@@ -254,6 +273,8 @@ async def fetch_commentary_for_reference(
             )
             for r in rows
         ]
+        entries = _collapse_duplicate_entries(entries)
+
         if not entries:
             return None
         return CommentaryResult(
