@@ -18,6 +18,8 @@ _NT_BOOKS = {
 
 # Matches "Book Chapter:Verse" or "Book Chapter:Verse-Verse"
 _REF_RE = re.compile(r'^(.+?)\s+(\d+):(\d+)(?:-(\d+))?$')
+# Matches "Book Chapter" (no verse)
+_CHAP_RE = re.compile(r'^(.+?)\s+(\d+)$')
 
 _BEREAN_PATH = Path(__file__).parent.parent / "data" / "berean_nt.json"
 
@@ -29,12 +31,22 @@ def _load_berean() -> dict:
     return json.loads(_BEREAN_PATH.read_text(encoding="utf-8"))
 
 
+def _parse_ref(reference: str) -> tuple[str, str, int | None, int | None] | None:
+    """Return (book, chapter_str, v_start, v_end) or None if unparseable."""
+    ref = reference.strip()
+    m = _REF_RE.match(ref)
+    if m:
+        return m.group(1), m.group(2), int(m.group(3)), int(m.group(4)) if m.group(4) else int(m.group(3))
+    m = _CHAP_RE.match(ref)
+    if m:
+        return m.group(1), m.group(2), None, None
+    return None
+
+
 def is_nt_passage(reference: str) -> bool:
     """Return True if the reference names a New Testament book."""
-    m = _REF_RE.match(reference.strip())
-    if not m:
-        return False
-    return m.group(1) in _NT_BOOKS
+    parsed = _parse_ref(reference)
+    return parsed is not None and parsed[0] in _NT_BOOKS
 
 
 def get_passage_words(reference: str) -> list[dict] | None:
@@ -42,18 +54,13 @@ def get_passage_words(reference: str) -> list[dict] | None:
     Return word list for a NT reference, or None for OT/unknown/missing data.
 
     Each dict has keys: greek, lemma, strongs, gloss, morph, verse (int).
+    Accepts both verse-level ("Titus 2:11-15") and chapter-level ("Titus 3").
     """
-    m = _REF_RE.match(reference.strip())
-    if not m:
+    parsed = _parse_ref(reference)
+    if parsed is None:
         return None
-    book = m.group(1)
+    book, chapter, v_start, v_end = parsed
     if book not in _NT_BOOKS:
-        return None
-    chapter = m.group(2)
-    v_start = int(m.group(3))
-    v_end = int(m.group(4)) if m.group(4) else v_start
-    if v_end < v_start:
-        logger.warning("get_passage_words: inverted verse range in %r", reference)
         return None
 
     data = _load_berean()
@@ -62,8 +69,17 @@ def get_passage_words(reference: str) -> list[dict] | None:
         return None
 
     words: list[dict] = []
-    for v in range(v_start, v_end + 1):
-        for w in ch_data.get(str(v), []):
-            words.append({**w, "verse": v})
+    if v_start is None:
+        # Chapter-level: return all verses in order
+        for v in sorted(ch_data.keys(), key=int):
+            for w in ch_data[v]:
+                words.append({**w, "verse": int(v)})
+    else:
+        if v_end < v_start:
+            logger.warning("get_passage_words: inverted verse range in %r", reference)
+            return None
+        for v in range(v_start, v_end + 1):
+            for w in ch_data.get(str(v), []):
+                words.append({**w, "verse": v})
 
     return words if words else None
