@@ -28,6 +28,7 @@ class CommentarySource(str, Enum):
     LIGHTFOOT = "lightfoot"              # John Lightfoot Commentary
     CATENA = "catena"                    # Catena Aurea (Thomas Aquinas)
     TDAVID = "tdavid"                    # C. H. Spurgeon's Treasury of David
+    CONSTABLE = "constable"              # Constable's Expository Notes (Dr. Thomas L. Constable)
 
 
 @dataclass
