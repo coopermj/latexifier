@@ -1,6 +1,7 @@
 """Generate LaTeX from parsed sermon outline."""
 import json
 import logging
+import re
 from pathlib import Path
 
 from .models import SermonOutline, SermonPoint, SermonSubPoint, Table
@@ -53,6 +54,23 @@ def _morph_label(morph: str) -> str:
     """Convert a Berean morphology code prefix to a readable label."""
     prefix = morph.split("-")[0].upper()
     return _MORPH_PREFIX.get(prefix, morph.lower())
+
+
+def _parse_verse_range(ref: str) -> tuple[int, int] | None:
+    """Extract (verse_start, verse_end) from a reference like 'Titus 2:11-15'."""
+    m = re.search(r':(\d+)(?:[–-](\d+))?$', ref.strip())
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2)) if m.group(2) else int(m.group(1))
+
+
+def _commentary_anchor(source_name: str, vs: int, ve: int) -> str:
+    slug = re.sub(r'[^a-z0-9]+', '-', source_name.lower()).strip('-')
+    return f"comm-{slug}-{vs}-{ve}"
+
+
+def _verse_label(vs: int, ve: int) -> str:
+    return f"v. {vs}" if vs == ve else f"vv. {vs}–{ve}"
 
 
 
@@ -243,6 +261,38 @@ def format_date(date_str: str | None) -> str:
     return date_str
 
 
+def _build_commentary_links(
+    vs: int,
+    ve: int,
+    commentaries: list,
+    note_anchor: str,
+    back_links: dict,
+) -> list[tuple[str, str]]:
+    """Return commentary links for a verse range, keeping only the most specific entry per source."""
+    links = []
+    for cr in commentaries:
+        # Collect all overlapping entries for this source, sorted by span (most specific first)
+        matches = sorted(
+            [e for e in cr.entries if e.verse_start <= ve and e.verse_end >= vs],
+            key=lambda e: e.verse_end - e.verse_start,
+        )
+        if not matches:
+            continue
+        min_span = matches[0].verse_end - matches[0].verse_start
+        seen: set[str] = set()
+        for entry in matches:
+            if entry.verse_end - entry.verse_start > min_span:
+                break
+            comm_anchor = _commentary_anchor(cr.source_name, entry.verse_start, entry.verse_end)
+            if comm_anchor in seen:
+                continue
+            seen.add(comm_anchor)
+            label = f"{cr.source_name} ({_verse_label(entry.verse_start, entry.verse_end)})"
+            links.append((label, comm_anchor))
+            back_links.setdefault((cr.source_name, entry.verse_start, entry.verse_end), note_anchor)
+    return links
+
+
 async def generate_sermon_latex(
     outline: SermonOutline,
     scripture_version: str = "ESV",
@@ -400,7 +450,7 @@ async def generate_sermon_latex(
 \newfontfamily\wordstudy{Times New Roman}
 \newfontfamily\greekfont{Times New Roman}
 \newfontfamily\josefin{Josefin Sans}
-\newfontfamily\commentaryfont{Helvetica Neue}[BoldFont = {Helvetica Neue Bold}]
+\newfontfamily\commentaryfont{Optima}[BoldFont = {Optima Bold}]
 \IfFontExistsTF{Autumn in November}
   {\newfontfamily\qtcoronation{Autumn in November}}
   {\IfFontExistsTF{Snell Roundhand}
@@ -537,9 +587,52 @@ async def generate_sermon_latex(
         lines.append(r"\vspace{2.2in}")
         lines.append("")
 
+    # Fetch commentaries early so note pages can link to them
+    has_commentary = commentary_sources or commentary_overrides is not None
+    commentaries: list[CommentaryResult] = []
+    if has_commentary:
+        commentaries = await _fetch_commentaries(
+            main_passage, commentary_sources or [], preloaded=commentary_overrides
+        )
+        logger.info("Rendering commentary appendix for passage: %s, sources: %s",
+                    main_passage, commentary_sources)
+
+    # Build note→commentary links and commentary→note back-links
+    # note_page_links[(pi, si)] = [(label, comm_anchor), ...]
+    # back_links[(source_name, vs, ve)] = first note_anchor that references this entry
+    note_page_links: dict[tuple[int, int], list[tuple[str, str]]] = {}
+    back_links: dict[tuple[str, int, int], str] = {}
+
+    for pi, point in enumerate(outline.points):
+        if point.sub_points:
+            for si, sub in enumerate(point.sub_points):
+                vr = _parse_verse_range(sub.scripture_verse or "")
+                if not vr:
+                    continue
+                vs, ve = vr
+                note_anchor = f"note-p{pi}-s{si}"
+                links = _build_commentary_links(vs, ve, commentaries, note_anchor, back_links)
+                if links:
+                    note_page_links[(pi, si)] = links
+        else:
+            ref = (point.scripture_refs or [None])[0]
+            vr = _parse_verse_range(ref) if ref else None
+            if vr:
+                vs, ve = vr
+                note_anchor = f"note-p{pi}"
+                links = _build_commentary_links(vs, ve, commentaries, note_anchor, back_links)
+                if links:
+                    note_page_links[(-1, pi)] = links
+
     # Main points as sections (tables render inline within each point)
-    for point in outline.points:
-        lines.extend(_render_point(point, subpoint_version))
+    for pi, point in enumerate(outline.points):
+        subpoint_links = {si: note_page_links[(pi, si)]
+                          for si in range(len(point.sub_points or []))
+                          if (pi, si) in note_page_links}
+        p_links = note_page_links.get((-1, pi))
+        lines.extend(_render_point(point, subpoint_version, point_idx=pi,
+                                   subpoint_links=subpoint_links or None,
+                                   point_links=p_links))
 
     # Render any top-level tables not associated with a specific point
     if outline.tables:
@@ -548,14 +641,9 @@ async def generate_sermon_latex(
             lines.extend(_render_table(table))
 
     # Commentary appendix
-    if commentary_sources or commentary_overrides is not None:
+    if has_commentary:
         lines.append(r"\hypertarget{commentary}{}")
-        commentary_lines = await _render_commentary_appendix(
-            main_passage,
-            commentary_sources or [],
-            preloaded=commentary_overrides,
-        )
-        lines.extend(commentary_lines)
+        lines.extend(_render_commentary_appendix(commentaries, back_links))
 
     # Lexicon appendix (NT passages only)
     if interlinear_active and passage_words:
@@ -580,15 +668,23 @@ async def generate_sermon_latex(
     return "\n".join(lines)
 
 
-def _render_point(point: SermonPoint, version: str) -> list[str]:
+def _render_point(
+    point: SermonPoint,
+    version: str,
+    point_idx: int = 0,
+    subpoint_links: dict[int, list[tuple[str, str]]] | None = None,
+    point_links: list[tuple[str, str]] | None = None,
+) -> list[str]:
     """Render a main sermon point as a section."""
     lines = []
     section_title = escape_latex(point.title or "")
 
-    # If point has sub-points, each sub-point gets its own page with section header
     if point.sub_points:
-        for sub in point.sub_points:
-            lines.extend(_render_subpoint(sub, version, section_title))
+        for si, sub in enumerate(point.sub_points):
+            anchor = f"note-p{point_idx}-s{si}"
+            links = (subpoint_links or {}).get(si)
+            lines.extend(_render_subpoint(sub, version, section_title,
+                                          note_anchor=anchor, commentary_links=links))
         # Render any tables within this point after the sub-points
         if point.tables:
             for table in point.tables:
@@ -596,6 +692,7 @@ def _render_point(point: SermonPoint, version: str) -> list[str]:
     else:
         # Point with no sub-points
         lines.append(r"\newpage{}")
+        lines.append(rf"\hypertarget{{note-p{point_idx}}}{{}}")
         lines.append(rf"\section{{{section_title}}}")
         lines.append("")
 
@@ -657,17 +754,34 @@ def _render_point(point: SermonPoint, version: str) -> list[str]:
             for table in point.tables:
                 lines.extend(_render_table(table))
 
+        if point_links:
+            lines.append(r"\vfill")
+            lines.append(r"\noindent\rule{\linewidth}{0.4pt}")
+            link_items = [
+                rf"\hyperlink{{{anchor}}}{{{escape_latex(label)}}}"
+                for label, anchor in point_links
+            ]
+            sep = r"\enspace\textperiodcentered\enspace"
+            links_str = sep.join(link_items)
+            lines.append(rf"{{\footnotesize\commentaryfont\color{{highlight}}{links_str}}}")
+
     return lines
 
 
-def _render_subpoint(sub: SermonSubPoint, version: str, section_title: str = "") -> list[str]:
+def _render_subpoint(
+    sub: SermonSubPoint,
+    version: str,
+    section_title: str = "",
+    note_anchor: str = "",
+    commentary_links: list[tuple[str, str]] | None = None,
+) -> list[str]:
     """Render a sub-point - two-column if has scripture refs, full-width otherwise."""
     lines = []
 
-    # Each sub-point starts on a new page
     lines.append(r"\newpage{}")
+    if note_anchor:
+        lines.append(rf"\hypertarget{{{note_anchor}}}{{}}")
 
-    # Section header at top of each sub-point page
     if section_title:
         lines.append(rf"\section{{{section_title}}}")
         lines.append("")
@@ -733,6 +847,17 @@ def _render_subpoint(sub: SermonSubPoint, version: str, section_title: str = "")
                 lines.append(rf"\item {escape_latex(bullet)}")
             lines.append(r"\end{itemize}")
 
+    if commentary_links:
+        lines.append(r"\vfill")
+        lines.append(r"\noindent\rule{\linewidth}{0.4pt}")
+        link_items = [
+            rf"\hyperlink{{{anchor}}}{{{escape_latex(label)}}}"
+            for label, anchor in commentary_links
+        ]
+        sep = r"\enspace\textperiodcentered\enspace"
+        links_str = sep.join(link_items)
+        lines.append(rf"{{\footnotesize\commentaryfont\color{{highlight}}{links_str}}}")
+
     lines.append("")
     return lines
 
@@ -776,42 +901,33 @@ def _render_word_study_from_strongs(strongs_numbers: set[str]) -> list[str]:
     return lines
 
 
-async def _render_commentary_appendix(
+async def _fetch_commentaries(
     main_passage: str,
     commentary_sources: list[str],
     preloaded: list[CommentaryResult] | None = None,
-) -> list[str]:
-    """Render commentary appendix section."""
-    lines = []
-    logger.info("Rendering commentary appendix for passage: %s, sources: %s", main_passage, commentary_sources)
-
-    # Map source strings to CommentarySource enum
+) -> list[CommentaryResult]:
+    """Fetch (or pass through) commentary results for a passage."""
+    if preloaded is not None:
+        return preloaded
     slug_to_source = {s.value: s for s in CommentarySource}
     sources = [slug_to_source[src] for src in commentary_sources if src in slug_to_source]
+    results = []
+    for source in sources:
+        result = await fetch_commentary_for_reference(main_passage, source)
+        if result:
+            results.append(result)
+    return results
 
-    if preloaded is not None:
-        commentaries = preloaded
-    else:
-        if not sources:
-            logger.info("No valid commentary sources after mapping")
-            return lines
 
-        # Fetch commentary for the main passage from each source
-        commentaries: list[CommentaryResult] = []
-        for source in sources:
-            logger.info("Fetching commentary from %s for %s", source.value, main_passage)
-            result = await fetch_commentary_for_reference(main_passage, source)
-            if result:
-                logger.info("Got commentary result with %d entries", len(result.entries))
-                commentaries.append(result)
-            else:
-                logger.warning("No commentary result from %s", source.value)
-
+def _render_commentary_appendix(
+    commentaries: list[CommentaryResult],
+    back_links: dict[tuple[str, int, int], str],
+) -> list[str]:
+    """Render commentary appendix. back_links maps (source_name, vs, ve) -> note anchor."""
     if not commentaries:
-        logger.info("No commentaries returned from any source")
-        return lines
+        return []
 
-    # Add appendix section with wider margins and different font
+    lines = []
     lines.append("")
     lines.append(r"\newpage")
     lines.append(r"\newgeometry{left=10mm,right=15mm,top=15mm,bottom=10mm}")
@@ -820,28 +936,30 @@ async def _render_commentary_appendix(
     lines.append("")
 
     for commentary in commentaries:
-        # Source name as subsection
         lines.append(rf"\subsection{{{escape_latex(commentary.source_name)}}}")
         lines.append("")
 
-        # Render each entry
         for entry in commentary.entries:
-            # Add verse reference if it's a specific verse
+            anchor = _commentary_anchor(commentary.source_name, entry.verse_start, entry.verse_end)
+            lines.append(rf"\hypertarget{{{anchor}}}{{}}")
+
             if entry.verse_start == entry.verse_end:
-                lines.append(rf"\textbf{{v. {entry.verse_start}}}")
+                lines.append(rf"\textbf{{v.~{entry.verse_start}}}")
             elif entry.verse_end:
-                lines.append(rf"\textbf{{vv. {entry.verse_start}--{entry.verse_end}}}")
+                lines.append(rf"\textbf{{vv.~{entry.verse_start}--{entry.verse_end}}}")
             lines.append("")
 
-            # Add commentary text (escape LaTeX special chars)
             text = escape_latex(entry.text)
-            # Convert double newlines to LaTeX paragraph breaks
             text = text.replace("\n\n", "\n\n\\medskip\n\n")
             lines.append(text)
             lines.append("")
+
+            back_key = (commentary.source_name, entry.verse_start, entry.verse_end)
+            note_anchor = back_links.get(back_key)
+            if note_anchor:
+                lines.append(rf"\hfill\hyperlink{{{note_anchor}}}{{↩}}")
             lines.append(r"\medskip")
             lines.append("")
 
-    # Restore original geometry
     lines.append(r"\restoregeometry")
     return lines
