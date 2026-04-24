@@ -964,7 +964,7 @@ def _render_commentary_appendix(
             back_key = (commentary.source_name, entry.verse_start, entry.verse_end)
             note_anchor = back_links.get(back_key)
             if note_anchor:
-                lines.append(rf"\hfill\hyperlink{{{note_anchor}}}{{↩}}")
+                lines.append(rf"\hfill\hyperlink{{{note_anchor}}}{{\small\faReply}}")
             lines.append(r"\medskip")
             lines.append("")
 
