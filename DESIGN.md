@@ -29,7 +29,7 @@ typography:
     fontWeight: 400
     lineHeight: 1.4
   commentary:
-    fontFamily: "Optima, sans-serif"
+    fontFamily: "Freight Sans Pro, sans-serif"
     fontSize: "\\small (approx. 9pt)"
     fontWeight: 400
     lineHeight: 1.4
@@ -92,7 +92,7 @@ A single-accent palette derived from liturgical tradition. The purple functions 
 **Display/Structure Font:** Josefin Sans (geometric sans-serif)
 **Body Font:** All Round Gothic (rounded humanist gothic)
 **Scripture Font:** Latin Modern Roman (classical serif)
-**Commentary Font:** Optima (humanist sans, lightly flared terminals)
+**Commentary Font:** Freight Sans Pro (humanist sans, lightly flared terminals)
 **Byline Font:** Script cascade (Autumn in November → Snell Roundhand → Brush Script MT → Zapfino → Times New Roman Italic)
 **Greek Font:** Times New Roman (polytonic-capable serif)
 
@@ -105,12 +105,12 @@ A single-accent palette derived from liturgical tradition. The purple functions 
 - **Subsection** (RM serif, bold, 12pt/16.8pt): Point-level headings within sections. Currently rendered in Rubric Red — see color note above.
 - **Body** (All Round Gothic, regular, `\normalsize` approx. 10pt, leading 1.3): All pastor's notes, bullet points, and prose content. This is the primary reading voice.
 - **Scripture** (Latin Modern Roman, regular, `\small` approx. 9pt, leading 1.4): All scripture quotations. Never uses the body font. The size step down (10pt → 9pt) combined with the serif-to-body-sans contrast is the sole differentiator.
-- **Commentary** (Optima, regular, `\small` approx. 9pt, leading 1.4): Commentary appendix text. The humanist sans with lightly flared terminals reads as refined rather than neutral, differentiating it from both the body and scripture voices without the coldness of a full grotesque.
+- **Commentary** (Freight Sans Pro, regular, `\small` approx. 9pt, leading 1.4): Commentary appendix text. The humanist sans with lightly flared terminals reads as refined rather than neutral, differentiating it from both the body and scripture voices without the coldness of a full grotesque.
 - **Byline** (script cascade, `\normalsize`): Speaker name on the title page only. The only expressive typographic gesture in the system.
 - **Greek** (Times New Roman, `\small`): Interlinear Greek tokens above their English glosses. Glosses are italic and hyperlinked to the lexicon.
 
 ### Named Rules
-**The Four-Register Rule.** Each font family is assigned one semantic category and never appears outside it: All Round Gothic = pastor's voice; Latin Modern Roman = scripture; Josefin Sans = structure/navigation; Optima = external commentary. Mixing registers — e.g., using Josefin Sans for body text, or Latin Modern Roman for headings — breaks the semantic contract that makes the typography self-explanatory.
+**The Four-Register Rule.** Each font family is assigned one semantic category and never appears outside it: All Round Gothic = pastor's voice; Latin Modern Roman = scripture; Josefin Sans = structure/navigation; Freight Sans Pro = external commentary. Mixing registers — e.g., using Josefin Sans for body text, or Latin Modern Roman for headings — breaks the semantic contract that makes the typography self-explanatory.
 
 **The Size-Step Rule.** Scripture and commentary are set at `\small` (approx. 9pt) against the `\normalsize` (approx. 10pt) body. This 1pt step combined with font-family contrast is sufficient to signal register change. Do not increase scripture size to match the body — the step is intentional and preserves the hierarchy.
 
@@ -144,7 +144,7 @@ Each Greek word is a vertical unit: Greek token above (`\greekfont\small`), Engl
 Set entirely in Helvetica Neue at `\small`. Source attribution appears as a section heading with an 0.8pt underrule. Each entry carries a `\hypertarget` for the return-link system. The source name and verse range appear at the entry head; body text follows in regular weight. A `↩` glyph at the close of each entry hyperlinks back to the note page that referenced it.
 
 ### Commentary Links Footer (Note Pages)
-When a note page has associated commentary entries, a `\vfill` + thin 0.4pt rule anchors an inline apparatus line at the page bottom. Links appear as a horizontal sequence in `\footnotesize\commentaryfont` (Optima), separated by centered dots (`\textperiodcentered`), colored in Scholiast Purple. Per source, only the most specific (smallest verse range) matching entry is shown — no duplicate broad-range entries from the same source. The rule matches the footer rule visually, making the apparatus feel like an extension of the footer rather than a separate element.
+When a note page has associated commentary entries, a `\vfill` + thin 0.4pt rule anchors an inline apparatus line at the page bottom. Links appear as a horizontal sequence in `\footnotesize\commentaryfont` (Freight Sans Pro), separated by centered dots (`\textperiodcentered`), colored in Scholiast Purple. Per source, only the most specific (smallest verse range) matching entry is shown — no duplicate broad-range entries from the same source. The rule matches the footer rule visually, making the apparatus feel like an extension of the footer rather than a separate element.
 
 ### Footer Navigation
 A `fancypagestyle` footer on every non-title page: 0.4pt horizontal rule above; Scholiast Purple `\faHome` glyph at left (hyperlinked to title page); page number at right. Footskip 8mm. No header rule. The home icon is the only navigational chrome visible during reading.

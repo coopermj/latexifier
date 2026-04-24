@@ -450,7 +450,14 @@ async def generate_sermon_latex(
 \newfontfamily\wordstudy{Times New Roman}
 \newfontfamily\greekfont{Times New Roman}
 \newfontfamily\josefin{Josefin Sans}
-\newfontfamily\commentaryfont{Optima}[BoldFont = {Optima Bold}]
+\newfontfamily\commentaryfont{FreightSans-Book}[
+  Path = ./,
+  Extension = .otf,
+  BoldFont = FreightSans-Bold,
+  ItalicFont = FreightSans-BookItalic,
+  BoldItalicFont = FreightSans-BoldItalic,
+  Ligatures = TeX
+]
 \IfFontExistsTF{Autumn in November}
   {\newfontfamily\qtcoronation{Autumn in November}}
   {\IfFontExistsTF{Snell Roundhand}
