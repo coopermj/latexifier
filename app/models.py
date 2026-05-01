@@ -99,6 +99,7 @@ class SermonMetadata(BaseModel):
     speaker: str | None = Field(None, description="Speaker/pastor name")
     date: str | None = Field(None, description="Sermon date")
     series: str | None = Field(None, description="Sermon series name if mentioned")
+    map: str | None = Field(None, description="Map key for title page — one of: paul-journeys, paul-journeys-biblica, jerusalem, galilee, palestine-conquest, palestine-overview. Null if no map is relevant.")
 
 
 class SermonSubPoint(BaseModel):

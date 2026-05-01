@@ -109,6 +109,7 @@ class GenerateResponse(BaseModel):
     url: str | None = None
     tex_url: str | None = None
     error: str | None = None
+    log: str | None = None
 
 
 def _hash_password(password: str) -> str:
@@ -365,18 +366,21 @@ async def generate_sermon_pdf(
         safe_title = "".join(c for c in outline.metadata.title if c.isalnum() or c in " -_").strip()
         filename = f"{safe_title}.pdf" if safe_title else "sermon.pdf"
         pdf_id = await save_pdf(pdf_bytes, filename, tex_content=processed_tex)
-        download_url = f"/download/{pdf_id}"
+        download_url = f"/download/{pdf_id}/{filename}"
         tex_url = f"/download/{pdf_id}/tex"
 
         return GenerateResponse(success=True, url=download_url, tex_url=tex_url)
 
     except CompilationError as exc:
         logger.error("Compilation failed: %s", exc.message)
+        log_tail = ""
         if exc.log:
-            # Log last 50 lines of compilation log for debugging
-            log_lines = exc.log.split('\n')[-50:]
-            logger.error("LaTeX log (last 50 lines):\n%s", '\n'.join(log_lines))
-        return GenerateResponse(success=False, error=f"PDF compilation failed: {exc.message}")
+            log_lines = exc.log.split('\n')
+            logger.error("LaTeX log (last 50 lines):\n%s", '\n'.join(log_lines[-50:]))
+            # Surface lines containing errors to the client
+            error_lines = [l for l in log_lines if l.startswith('!') or 'Error' in l or 'error' in l]
+            log_tail = '\n'.join(error_lines[-20:]) or '\n'.join(log_lines[-30:])
+        return GenerateResponse(success=False, error=f"PDF compilation failed: {exc.message}", log=log_tail)
     except Exception as exc:
         logger.exception("Unexpected compilation error")
         return GenerateResponse(success=False, error=f"Compilation error: {exc}")
@@ -404,9 +408,10 @@ async def _compile_without_image(
         tex_file = work_dir / "sermon.tex"
         tex_file.write_text(latex_content, encoding="utf-8")
 
-        # Copy global styles and fonts
+        # Copy global styles, fonts, and maps
         styles_dir = Path(settings.storage_path) / "styles"
         fonts_dir = Path(settings.storage_path) / "fonts"
+        maps_dir = Path(settings.storage_path) / "maps"
 
         if styles_dir.exists():
             for style_file in styles_dir.glob("*"):
@@ -415,6 +420,12 @@ async def _compile_without_image(
         if fonts_dir.exists():
             for font_file in fonts_dir.glob("*"):
                 shutil.copy(font_file, work_dir / font_file.name)
+
+        if maps_dir.exists():
+            for map_file in maps_dir.glob("*.jpg"):
+                shutil.copy(map_file, work_dir / map_file.name)
+            for map_file in maps_dir.glob("*.png"):
+                shutil.copy(map_file, work_dir / map_file.name)
 
         # Write supplementary PDFs
         if supplementary_pdfs:
@@ -493,9 +504,10 @@ async def _compile_with_image(
         image_path = work_dir / image_filename
         image_path.write_bytes(image_data)
 
-        # Copy global styles and fonts
+        # Copy global styles, fonts, and maps
         styles_dir = Path(settings.storage_path) / "styles"
         fonts_dir = Path(settings.storage_path) / "fonts"
+        maps_dir = Path(settings.storage_path) / "maps"
 
         if styles_dir.exists():
             for style_file in styles_dir.glob("*"):
@@ -504,6 +516,12 @@ async def _compile_with_image(
         if fonts_dir.exists():
             for font_file in fonts_dir.glob("*"):
                 shutil.copy(font_file, work_dir / font_file.name)
+
+        if maps_dir.exists():
+            for map_file in maps_dir.glob("*.jpg"):
+                shutil.copy(map_file, work_dir / map_file.name)
+            for map_file in maps_dir.glob("*.png"):
+                shutil.copy(map_file, work_dir / map_file.name)
 
         # Write supplementary PDFs
         if supplementary_pdfs:

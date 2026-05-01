@@ -32,7 +32,7 @@ class ScriptureVersion(str, Enum):
 
 @dataclass
 class ScriptureLookupOptions:
-    include_headings: bool = False
+    include_headings: bool = True
     include_verse_numbers: bool = False
     include_footnotes: bool = False
     include_short_copyright: bool = True

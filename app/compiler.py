@@ -114,9 +114,10 @@ async def compile_latex(request: CompileRequest) -> tuple[bytes | str, str]:
         if not main_path.exists():
             raise CompilationError(f"Main file '{main_file}' not found")
 
-        # Copy global styles and fonts if they exist
+        # Copy global styles, fonts, and maps if they exist
         styles_dir = Path(settings.storage_path) / "styles"
         fonts_dir = Path(settings.storage_path) / "fonts"
+        maps_dir = Path(settings.storage_path) / "maps"
 
         if styles_dir.exists():
             for style_file in styles_dir.glob("*"):
@@ -125,6 +126,12 @@ async def compile_latex(request: CompileRequest) -> tuple[bytes | str, str]:
         if fonts_dir.exists():
             for font_file in fonts_dir.glob("*"):
                 shutil.copy(font_file, work_dir / font_file.name)
+
+        if maps_dir.exists():
+            for map_file in maps_dir.glob("*.jpg"):
+                shutil.copy(map_file, work_dir / map_file.name)
+            for map_file in maps_dir.glob("*.png"):
+                shutil.copy(map_file, work_dir / map_file.name)
 
         # Replace scripture placeholders before compilation
         try:

@@ -117,7 +117,6 @@ class _SectionParser(HTMLParser):
             self._cur_text = []
         elif tag == "p" and self._cur_verse:
             self._in_p = True
-            self._cur_text.append(" ")
 
     def handle_endtag(self, tag):
         if tag == "h3":
@@ -134,6 +133,8 @@ class _SectionParser(HTMLParser):
                 self._cur_text = []
         elif tag == "p":
             self._in_p = False
+            if self._cur_verse and self._cur_text:
+                self._cur_text.append("\n\n")
 
     def handle_data(self, data):
         if self._in_h3 or (self._in_p and self._cur_verse):
@@ -141,9 +142,11 @@ class _SectionParser(HTMLParser):
 
     def _flush(self):
         if self._cur_verse and self._cur_text:
-            text = " ".join("".join(self._cur_text).split()).strip()
-            if text:
-                self.sections.append((*self._cur_verse, text))
+            raw = "".join(self._cur_text)
+            paragraphs = raw.split("\n\n")
+            cleaned = "\n\n".join(" ".join(p.split()) for p in paragraphs if p.strip())
+            if cleaned:
+                self.sections.append((*self._cur_verse, cleaned))
         self._cur_verse = None
         self._cur_text = []
 

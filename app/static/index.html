@@ -62,6 +62,10 @@
                     </div>
                     <div class="checkbox-group">
                         <label class="checkbox-label">
+                            <input type="checkbox" id="commentary-constable" value="constable">
+                            <span>Constable's Expository Notes</span>
+                        </label>
+                        <label class="checkbox-label">
                             <input type="checkbox" id="commentary-mhc" value="mhc">
                             <span>Matthew Henry's Commentary</span>
                         </label>
@@ -164,7 +168,7 @@
             <div id="commentary-cards"></div>
             <div id="review-error" class="result result-error hidden">
                 <h3>Error</h3>
-                <p id="review-error-message"></p>
+                <pre id="review-error-message" style="white-space:pre-wrap;font-size:0.75em;margin:0"></pre>
             </div>
             <div class="wizard-nav">
                 <button type="button" id="back-btn" class="back-btn">← Back</button>
@@ -180,8 +184,8 @@
             <div class="result result-success">
                 <h3>PDF Generated!</h3>
                 <div class="download-buttons">
-                    <a id="download-link" href="#" target="_blank" class="download-btn">Download PDF</a>
-                    <a id="download-tex-link" href="#" target="_blank" class="download-btn download-btn-secondary">Download TeX</a>
+                    <a id="download-link" href="#" class="download-btn">Open PDF</a>
+                    <a id="download-tex-link" href="#" download class="download-btn download-btn-secondary">Download TeX</a>
                 </div>
             </div>
             <div class="wizard-nav wizard-nav-center">
@@ -190,6 +194,6 @@
         </div>
     </main>
 
-    <script src="/static/app.js?v=6"></script>
+    <script src="/static/app.js?v=13"></script>
 </body>
 </html>

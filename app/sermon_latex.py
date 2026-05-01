@@ -43,6 +43,32 @@ def escape_latex(text: str) -> str:
     return text
 
 
+_re_para_break = re.compile(r"  +")
+
+_MAP_FILES: dict[str, str] = {
+    "paul-journeys": "paul-journeys.jpg",
+    "paul-journeys-biblica": "paul-journeys-biblica.png",
+    "jerusalem": "jerusalem.jpg",
+    "galilee": "galilee.jpg",
+    "palestine-conquest": "palestine-conquest.jpg",
+    "palestine-overview": "palestine-overview.jpg",
+}
+_re_open_dquote = re.compile(r'(?:(?<=[\s(])|^)"', re.MULTILINE)
+_re_open_squote = re.compile(r"(?:(?<=[\s(])|^)'(?=\S)", re.MULTILINE)
+# Catches already-curly U+2019 used wrongly as an opening quote (importer bug)
+_re_wrong_open_squote = re.compile(r'(?:(?<=[\s(])|^)\u2019(?=\S)', re.MULTILINE)
+
+
+def _smart_dquotes(text: str) -> str:
+    """Convert straight and mis-directed curly quotes to correct Unicode curly quotes."""
+    # Double quotes
+    text = _re_open_dquote.sub('\u201c', text)
+    text = text.replace('"', '\u201d')
+    # Single quotes \u2014 ASCII first, then fix already-curly-but-wrong-direction
+    text = _re_open_squote.sub('\u2018', text)
+    text = _re_wrong_open_squote.sub('\u2018', text)
+    text = text.replace("'", '\u2019')
+    return text
 _MORPH_PREFIX = {
     "N": "noun", "V": "verb", "A": "adj.", "ADV": "adv.",
     "PREP": "prep.", "CONJ": "conj.", "ART": "art.", "T": "art.",
@@ -268,28 +294,29 @@ def _build_commentary_links(
     note_anchor: str,
     back_links: dict,
 ) -> list[tuple[str, str]]:
-    """Return commentary links for a verse range, keeping only the most specific entry per source."""
+    """One link per source in the notes page bar; register all matches in back_links for return arrows."""
     links = []
     for cr in commentaries:
-        # Collect all overlapping entries for this source, sorted by span (most specific first)
+        # Sort widest span first — prefer entries covering more of the point's verse range
         matches = sorted(
             [e for e in cr.entries if e.verse_start <= ve and e.verse_end >= vs],
             key=lambda e: e.verse_end - e.verse_start,
+            reverse=True,
         )
         if not matches:
             continue
-        min_span = matches[0].verse_end - matches[0].verse_start
-        seen: set[str] = set()
-        for entry in matches:
-            if entry.verse_end - entry.verse_start > min_span:
-                break
-            comm_anchor = _commentary_anchor(cr.source_name, entry.verse_start, entry.verse_end)
-            if comm_anchor in seen:
-                continue
-            seen.add(comm_anchor)
-            label = f"{cr.source_name} ({_verse_label(entry.verse_start, entry.verse_end)})"
-            links.append((label, comm_anchor))
-            back_links.setdefault((cr.source_name, entry.verse_start, entry.verse_end), note_anchor)
+        # Register all overlapping entries so every appendix entry gets a correct return arrow
+        seen_text: set[int] = set()
+        for m in matches:
+            h = hash(m.text)
+            if h not in seen_text:
+                back_links.setdefault((cr.source_name, m.verse_start, m.verse_end), note_anchor)
+                seen_text.add(h)
+        # One link per source: the entry with widest (or first) coverage
+        entry = matches[0]
+        comm_anchor = _commentary_anchor(cr.source_name, entry.verse_start, entry.verse_end)
+        label = f"{cr.source_name} ({_verse_label(entry.verse_start, entry.verse_end)})"
+        links.append((label, comm_anchor))
     return links
 
 
@@ -321,6 +348,9 @@ async def generate_sermon_latex(
     Returns:
         Complete LaTeX document as string
     """
+    if cover_image is None and outline.metadata.map:
+        cover_image = _MAP_FILES.get(outline.metadata.map)
+
     lines = []
     title = escape_latex(outline.metadata.title or "")
     speaker = escape_latex(outline.metadata.speaker or "")
@@ -943,7 +973,10 @@ def _render_commentary_appendix(
     lines.append("")
 
     for commentary in commentaries:
-        lines.append(rf"\subsection{{{escape_latex(commentary.source_name)}}}")
+        # Manual heading — bypasses titlesec/sectsty font resets that would override commentaryfont.
+        src_name = escape_latex(commentary.source_name)
+        lines.append(rf"{{\commentaryfont\large\bfseries\color{{dark}} {src_name}}}")
+        lines.append(r"\par\noindent\rule{\linewidth}{0.4pt}")
         lines.append("")
 
         for entry in commentary.entries:
@@ -951,20 +984,24 @@ def _render_commentary_appendix(
             lines.append(rf"\hypertarget{{{anchor}}}{{}}")
 
             if entry.verse_start == entry.verse_end:
-                lines.append(rf"\textbf{{v.~{entry.verse_start}}}")
+                lines.append(rf"{{\color{{highlight}}\textbf{{v.~{entry.verse_start}}}}}")
             elif entry.verse_end:
-                lines.append(rf"\textbf{{vv.~{entry.verse_start}--{entry.verse_end}}}")
+                lines.append(rf"{{\color{{highlight}}\textbf{{vv.~{entry.verse_start}--{entry.verse_end}}}}}")
             lines.append("")
 
-            text = escape_latex(entry.text)
+            # MHC/Calvin store paragraph breaks as 2+ spaces (HTML import artifact).
+            # Constable stores them as literal \n\n (fixed importer). Both survive escape_latex.
+            raw = _re_para_break.sub("\n\n", _smart_dquotes(entry.text))
+            text = escape_latex(raw)
             text = text.replace("\n\n", "\n\n\\medskip\n\n")
-            lines.append(text)
-            lines.append("")
 
             back_key = (commentary.source_name, entry.verse_start, entry.verse_end)
-            note_anchor = back_links.get(back_key)
-            if note_anchor:
-                lines.append(rf"\hfill\hyperlink{{{note_anchor}}}{{\small\faReply}}")
+            note_anchor = back_links.get(back_key, "sermonnotes")
+            arrow = rf"\nobreak\hspace{{.4em}}\hyperlink{{{note_anchor}}}{{\scriptsize\faReply}}"
+            # Append arrow inline with the last word of the final paragraph
+            text = text.rstrip() + arrow
+            lines.append(text)
+            lines.append("")
             lines.append(r"\medskip")
             lines.append("")
 

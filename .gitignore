@@ -25,6 +25,7 @@ Thumbs.db
 # Local data (berean_nt.json is committed; exclude everything else in data/)
 /data/
 !/data/berean_nt.json
+!/data/maps/index.json
 *.pdf
 *.aux
 *.log

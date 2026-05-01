@@ -4,6 +4,7 @@ let bulletinPdfBase64 = null;
 let prayerPdfBase64 = null;
 let extractedOutline = null;    // SermonOutline dict from /web/extract
 let extractedCandidates = null; // {source_key: {source_name, entries[]}} from /web/extract
+let pdfBlobUrl = null;          // stored server URL for opening PDF in a new tab
 
 // ─── Wizard Navigation ────────────────────────────────────────────────────────
 function showStep(n) {
@@ -181,10 +182,9 @@ document.getElementById('sermon-form').addEventListener('submit', async (e) => {
     const notes = document.getElementById('notes').value.trim();
     if (!notes) { showExtractError('Please enter sermon notes'); return; }
 
-    const commentaries = ['commentary-mhc', 'commentary-calvin', 'commentary-scofield']
-        .map(id => document.getElementById(id))
-        .filter(el => el && el.checked)
-        .map(el => el.value);
+    const commentaries = Array.from(
+        document.querySelectorAll('#sermon-form input[type="checkbox"][id^="commentary-"]:checked')
+    ).map(el => el.value);
 
     setExtracting(true);
 
@@ -252,9 +252,17 @@ function renderReviewStep(outline, candidates) {
                     </li>`;
                 }).join('') + '</ol>';
             }
+            const ptRef = (pt.scripture_refs && pt.scripture_refs.length > 0) ? pt.scripture_refs[0] : '';
+            const ptVerseClass = ptRef ? 'verse-tag editable' : 'verse-tag editable verse-tag-empty';
             return `<li>
-                <strong contenteditable="true" class="editable point-title" data-edit-point="${pi}"
-                >${escapeHtml(pt.title || '')}</strong>${subHtml}
+                <strong contenteditable="true" class="editable point-title"
+                    data-edit-point="${pi}" data-edit-field="title"
+                >${escapeHtml(pt.title || '')}</strong>
+                <span contenteditable="true" class="${ptVerseClass}"
+                    data-edit-point="${pi}" data-edit-field="scripture_refs"
+                    data-placeholder="+ verse"
+                >${escapeHtml(ptRef)}</span>
+                ${subHtml}
             </li>`;
         }).join('') + '</ol>';
     }
@@ -389,13 +397,21 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
         const data = await resp.json();
 
         if (data.success && data.url) {
-            document.getElementById('download-link').href = data.url;
             const texLink = document.getElementById('download-tex-link');
             if (data.tex_url) { texLink.href = data.tex_url; texLink.style.display = 'inline-block'; }
             else { texLink.style.display = 'none'; }
+
+            pdfBlobUrl = data.url;
+            const dlLink = document.getElementById('download-link');
+            dlLink.onclick = (e) => {
+                e.preventDefault();
+                window.open(pdfBlobUrl, '_blank');
+            };
             showStep(3);
         } else {
-            document.getElementById('review-error-message').textContent = data.error || 'Unknown error';
+            const msg = data.error || 'Unknown error';
+            const logDetail = data.log ? `\n\n${data.log}` : '';
+            document.getElementById('review-error-message').textContent = msg + logDetail;
             document.getElementById('review-error').classList.remove('hidden');
         }
     } catch (_) {
@@ -415,6 +431,7 @@ function setGenerating(loading) {
 // ─── Step 3: Done ─────────────────────────────────────────────────────────────
 document.getElementById('start-over-btn').addEventListener('click', () => {
     extractedOutline = extractedCandidates = null;
+    pdfBlobUrl = null;
     document.getElementById('notes').value = '';
     clearImagePreview(); clearBulletinPdf(); clearPrayerPdf();
     document.querySelectorAll('#sermon-form input[type="checkbox"]').forEach(el => {
@@ -432,11 +449,16 @@ function collectEditedOutline() {
     outline.metadata.date     = document.getElementById('edit-date').value.trim() || null;
     outline.main_passage      = document.getElementById('edit-passage').value.trim() || outline.main_passage;
 
-    // Point titles
+    // Point titles and scripture_refs
     document.querySelectorAll('[data-edit-point]:not([data-edit-sub])').forEach(el => {
         const pi = parseInt(el.dataset.editPoint, 10);
-        if (outline.points[pi]) {
-            outline.points[pi].title = el.textContent.trim() || outline.points[pi].title;
+        if (!outline.points[pi]) return;
+        const field = el.dataset.editField;
+        const val = el.textContent.trim();
+        if (field === 'scripture_refs') {
+            outline.points[pi].scripture_refs = val ? [val] : [];
+        } else {
+            outline.points[pi].title = val || outline.points[pi].title;
         }
     });
 

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
@@ -89,10 +89,12 @@ async def root():
 
 
 @app.get("/download/{pdf_id}", tags=["utility"], summary="Download a compiled PDF")
-async def download_pdf(pdf_id: str):
+@app.get("/download/{pdf_id}/{slug}", tags=["utility"], include_in_schema=False)
+async def download_pdf(pdf_id: str, slug: str = ""):
     """
     Download a previously compiled PDF by its ID.
     PDFs are stored for 7 days after compilation.
+    The optional /{slug} suffix (e.g. /sermon.pdf) helps browsers infer the file type.
     """
     result = get_pdf(pdf_id)
     if result is None:
@@ -103,10 +105,9 @@ async def download_pdf(pdf_id: str):
 
     pdf_path, filename = result
     return FileResponse(
-        path=pdf_path,
+        path=str(pdf_path),
         media_type="application/pdf",
-        filename=filename,
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 
 

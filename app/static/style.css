@@ -555,6 +555,19 @@ input[type="file"] {
 }
 
 /* ── Commentary Cards ───────────────────────────────────────────────────── */
+#commentary-cards {
+    max-height: 42vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #ccc transparent;
+    padding-right: 2px;
+}
+
+#commentary-cards::-webkit-scrollbar { width: 5px; }
+#commentary-cards::-webkit-scrollbar-track { background: transparent; }
+#commentary-cards::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
 .commentary-card {
     background: white;
     border-radius: 8px;

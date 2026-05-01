@@ -95,7 +95,7 @@ def _parse_spec(raw_spec: str) -> PlaceholderSpec:
     reference = parts[0]
     version = ScriptureVersion.ESV
     options = {
-        "headings": False,
+        "headings": True,
         "verses": True,
         "footnotes": False,
         "copyright": True,
@@ -175,6 +175,7 @@ def _format_scripture_body(
     include_verse_numbers: bool,
     include_footnotes: bool,
     nolinks: bool = False,
+    include_headings: bool = True,
 ) -> str:
     """
     Convert plain text with verse numbers into scripture.sty macros.
@@ -183,6 +184,9 @@ def _format_scripture_body(
     - Converts verse numbers at line starts into \\vs{#}.
     - Handles NET Bible format with <b>chapter:verse</b> tags.
     """
+    def _heading_tex(h: str) -> str:
+        return f"{{\\small\\textit{{{h}}}}}\n"
+
     def strip_heading_and_footnotes(raw: str) -> str:
         lines = raw.splitlines()
 
@@ -190,11 +194,13 @@ def _format_scripture_body(
         while lines and not lines[0].strip():
             lines.pop(0)
 
-        # Drop heading (first non-empty line without digits)
+        # Handle heading (first non-empty line without digits)
         if lines and not re.search(r"\d", lines[0]):
-            lines.pop(0)
+            heading = lines.pop(0).strip()
+            if include_headings and heading:
+                lines.insert(0, _heading_tex(heading))
 
-        # Drop blank lines after heading
+        # Drop blank lines after heading (only when no heading was inserted)
         while lines and not lines[0].strip():
             lines.pop(0)
 
@@ -296,8 +302,32 @@ def _format_scripture_body(
         if chapter:
             converted = f"\\ch{{{chapter}}}\n" + converted
 
+    # Handle NET section headings (<h3>, <h4>, etc.) before catch-all strip
+    heading_tag_re = re.compile(r'<h\d[^>]*>(.*?)</h\d>', re.DOTALL | re.IGNORECASE)
+    if include_headings:
+        converted = heading_tag_re.sub(
+            lambda m: _heading_tex(re.sub(r'<[^>]+>', '', m.group(1)).strip()),
+            converted,
+        )
+    else:
+        converted = heading_tag_re.sub('', converted)
+
     # Strip any remaining HTML tags that weren't specifically handled
     converted = re.sub(r'<[^>]+>', '', converted)
+
+    # Format mid-passage ESV headings: isolated short paragraphs with no digits
+    # or LaTeX commands (these survive as plain text when include-headings=true)
+    if include_headings:
+        converted = re.sub(
+            r'\n\n([A-Z][^0-9\\\n]{4,70})\n\n',
+            lambda m: f'\n\n{_heading_tex(m.group(1).strip())}\n',
+            converted,
+        )
+
+    # Convert straight double quotes to typographic curly quotes.
+    # Preceded by whitespace or start-of-line → opening quote; remainder → closing.
+    converted = re.sub(r'(?:(?<=[\s(])|^)"(?=\S)', '“', converted, flags=re.MULTILINE)
+    converted = converted.replace('"', '”')
 
     # Clean up multiple spaces
     converted = re.sub(r'  +', ' ', converted)
@@ -333,6 +363,7 @@ IMPORTANT RULES:
 - Preserve all existing LaTeX commands (\\vs{}, \\ch{}, \\hyperlink{}, etc.)
 - Do NOT wrap entire passages as poetry if only portions are poetic
 - If no poetry is detected, return the text unchanged except for \\name{Lord} tags
+- Do NOT alter any punctuation, quotation marks, or non-structural characters — copy them byte-for-byte
 - Maintain exact spacing and line breaks
 
 Scripture text:
@@ -666,6 +697,7 @@ async def process_scripture_placeholders(
                 spec.options.include_verse_numbers,
                 spec.options.include_footnotes,
                 spec.nolinks,
+                spec.options.include_headings,
             )
 
             # If strongs_overlay, fetch NET to build word→Strong's map for AI annotation
@@ -686,6 +718,10 @@ async def process_scripture_placeholders(
                 result.canonical or result.reference,
                 strongs_word_map=strongs_word_map,
             )
+            # Re-apply smart-quote conversion after AI (Claude may normalize Unicode quotes)
+            import re as _re
+            analyzed = _re.sub(r'(?:(?<=[\s(])|^)"(?=\S)', '\u201c', analyzed, flags=_re.MULTILINE)
+            analyzed = analyzed.replace('"', '\u201d')
             rendered = _render_scripture(result.canonical or result.reference, spec.version, analyzed)
             replacements[spec.raw] = rendered
             # Collect reference for commentary appendix

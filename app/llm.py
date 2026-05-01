@@ -36,17 +36,18 @@ For scripture references:
 - Use standard format: "Book Chapter:Verse" or "Book Chapter:Verse-Verse"
 - Include book numbers: "1 John 3:16" not "I John 3:16"
 - Keep the parenthetical reference in the content text as well
-- IMPORTANT: When a main point title ends with a parenthetical verse range like "(vv 11-12)" or "(13-15)", extract that range into the point's scripture_refs as the fully-qualified reference (e.g., "Titus 2:11-12"). This signals that the point covers those verses and scripture will be displayed alongside it.
+- IMPORTANT: When a main point title ends with a parenthetical verse range like "(vv 11-12)", "(13-15)", "(v. 3)", "(v.3)", or "(v 3)", extract that range into the point's scripture_refs as the fully-qualified reference (e.g., "Titus 2:11-12" or "Titus 3:3"). This applies to both single verses (v. N) and ranges (vv N-N). This signals that the point covers those verses and scripture will be displayed alongside it.
 
 For scripture_verse matching (sub-points to main passage):
 - The main_passage defines the passage being preached (e.g., "Ephesians 4:22-25")
 - Each sub-point typically addresses a specific verse or verse range within that passage
 - Read the content/title of each sub-point carefully and identify which verse of the main passage it discusses
-- Set scripture_verse to the fully-qualified verse reference including book name (e.g., "Ephesians 4:22" not just "22")
+- Set scripture_verse to the fully-qualified verse reference including book name and chapter (e.g., "Ephesians 4:22" not just "22", "v. 22", "vv. 22-23", or "4:22")
 - If a sub-point spans multiple consecutive verses, use a range: "Ephesians 4:22-23"
 - If you cannot determine which verse a sub-point addresses, leave scripture_verse as null
 - Do NOT put parenthetical cross-references into scripture_verse — those belong in scripture_refs only
-- SAME RULE FOR POINTS WITH NO SUB-POINTS: if a point title ends with "(vv N-N)", put the fully-qualified ref in that point's scripture_refs
+- SAME RULE FOR POINTS WITH NO SUB-POINTS: if a point title ends with "(vv N-N)" or "(v. N)" or "(v N)", put the fully-qualified ref in that point's scripture_refs
+- NEVER output partial forms like "v. 4", "vv. 1-3", or "3:4" in scripture_verse — always "Book Chapter:Verse" format
 
 LAYOUT HINTS (for rendering):
 - Sub-points WITH scripture_verse OR scripture_refs will show scripture on left, notes on right (two-column)
@@ -79,7 +80,8 @@ Return ONLY valid JSON matching this exact structure:
     "title": "string",
     "speaker": "string or null",
     "date": "string or null",
-    "series": "string or null"
+    "series": "string or null",
+    "map": "one of: paul-journeys, paul-journeys-biblica, jerusalem, galilee, palestine-conquest, palestine-overview — or null if none fits. Choose based on the primary passage: Pauline epistles/Acts → paul-journeys; Jerusalem/Temple passages → jerusalem; Galilee/Gospel narratives → galilee; Joshua/Judges/conquest → palestine-conquest; general OT/Holy Land → palestine-overview."
   },
   "main_passage": "string (e.g., 'James 3:1-12')",
   "foundational_principle": "string or null",
@@ -121,6 +123,171 @@ class LLMError(Exception):
     def __init__(self, message: str, status_code: int = 500):
         self.status_code = status_code
         super().__init__(message)
+
+
+async def _normalize_scripture_refs(outline: SermonOutline) -> SermonOutline:
+    """Use Haiku to qualify partial verse refs (e.g. 'v. 4' → 'Titus 3:4').
+
+    Collects all scripture_verse / scripture_refs fields, sends them to Claude
+    with the main passage for context, patches corrections back into the outline.
+    Silently returns the original outline if anything goes wrong.
+    """
+    if not outline.main_passage:
+        return outline
+
+    # Collect every ref with a stable ID
+    refs: list[dict] = []
+    for pi, point in enumerate(outline.points):
+        for ri, ref in enumerate(point.scripture_refs or []):
+            refs.append({"id": f"p{pi}.r{ri}", "ref": ref})
+        for si, sub in enumerate(point.sub_points or []):
+            if sub.scripture_verse:
+                refs.append({"id": f"p{pi}.s{si}.v", "ref": sub.scripture_verse})
+            for ri, ref in enumerate(sub.scripture_refs or []):
+                refs.append({"id": f"p{pi}.s{si}.r{ri}", "ref": ref})
+
+    if not refs:
+        return outline
+
+    settings = get_settings()
+    if not settings.anthropic_api_key:
+        return outline
+
+    prompt = (
+        f'Main passage: "{outline.main_passage}"\n\n'
+        "Some of the scripture references below may be partial (e.g. \"v. 4\", "
+        "\"vv. 1-3\", \"3:4\"). Using the book and chapter from the main passage, "
+        "qualify any partial refs. Leave already fully-qualified refs unchanged.\n\n"
+        "Return ONLY a JSON object mapping each id to its corrected ref. "
+        "Only include entries that needed correction.\n\n"
+        f"Refs:\n{json.dumps(refs)}"
+    )
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 512,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                headers={
+                    "x-api-key": settings.anthropic_api_key,
+                    "content-type": "application/json",
+                    "anthropic-version": "2023-06-01",
+                },
+                timeout=20.0,
+            )
+            response.raise_for_status()
+
+        text = response.json()["content"][0]["text"].strip()
+        if text.startswith("```"):
+            text = "\n".join(text.split("\n")[1:-1])
+        corrections: dict[str, str] = json.loads(text)
+
+        if not corrections:
+            return outline
+
+        d = outline.model_dump()
+        for pi, point in enumerate(d["points"]):
+            for ri in range(len(point.get("scripture_refs") or [])):
+                key = f"p{pi}.r{ri}"
+                if key in corrections:
+                    d["points"][pi]["scripture_refs"][ri] = corrections[key]
+            for si, sub in enumerate(point.get("sub_points") or []):
+                if f"p{pi}.s{si}.v" in corrections:
+                    d["points"][pi]["sub_points"][si]["scripture_verse"] = corrections[f"p{pi}.s{si}.v"]
+                for ri in range(len(sub.get("scripture_refs") or [])):
+                    key = f"p{pi}.s{si}.r{ri}"
+                    if key in corrections:
+                        d["points"][pi]["sub_points"][si]["scripture_refs"][ri] = corrections[key]
+        return SermonOutline(**d)
+
+    except Exception as exc:
+        logger.warning("Scripture ref normalization failed (using original): %s", exc)
+        return outline
+
+
+async def _assign_missing_verse_refs(outline: SermonOutline) -> SermonOutline:
+    """Use Haiku to infer main-passage verse refs for points/sub-points that have none.
+
+    Only fills in items with no existing ref — does not overwrite anything.
+    """
+    if not outline.main_passage:
+        return outline
+
+    items: list[dict] = []
+    for pi, point in enumerate(outline.points):
+        if not point.scripture_refs:
+            text = (point.title or point.content or "").strip()[:400]
+            if text:
+                items.append({"id": f"p{pi}", "text": text})
+        for si, sub in enumerate(point.sub_points or []):
+            if not sub.scripture_verse:
+                text = ((sub.title or "") + " " + (sub.content or "")).strip()[:400]
+                if text:
+                    items.append({"id": f"p{pi}.s{si}", "text": text})
+
+    if not items:
+        return outline
+
+    settings = get_settings()
+    if not settings.anthropic_api_key:
+        return outline
+
+    prompt = (
+        f'Main passage: "{outline.main_passage}"\n\n'
+        "Below are sermon items with no verse assignment. For each, if it clearly "
+        "addresses a specific verse or verse range within the main passage, return "
+        "the fully-qualified ref (e.g. \"Titus 3:4\" or \"Titus 3:4-5\"). "
+        "If the item is thematic or maps to no single verse, return null.\n\n"
+        "Return ONLY a JSON object: {\"<id>\": \"ref or null\", ...}. Include every id.\n\n"
+        f"{json.dumps(items, ensure_ascii=False)}"
+    )
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 512,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                headers={
+                    "x-api-key": settings.anthropic_api_key,
+                    "content-type": "application/json",
+                    "anthropic-version": "2023-06-01",
+                },
+                timeout=20.0,
+            )
+            response.raise_for_status()
+
+        text = response.json()["content"][0]["text"].strip()
+        if text.startswith("```"):
+            text = "\n".join(text.split("\n")[1:-1])
+        assignments: dict = json.loads(text)
+
+        if not assignments:
+            return outline
+
+        d = outline.model_dump()
+        for pi, point in enumerate(d["points"]):
+            key = f"p{pi}"
+            if assignments.get(key):
+                refs = d["points"][pi].setdefault("scripture_refs", [])
+                if assignments[key] not in refs:
+                    refs.append(assignments[key])
+            for si in range(len(point.get("sub_points") or [])):
+                key = f"p{pi}.s{si}"
+                if assignments.get(key):
+                    d["points"][pi]["sub_points"][si]["scripture_verse"] = assignments[key]
+        return SermonOutline(**d)
+
+    except Exception as exc:
+        logger.warning("Verse ref assignment failed (using original): %s", exc)
+        return outline
 
 
 async def extract_sermon_outline(pdf_bytes: bytes) -> SermonOutline:
@@ -229,7 +396,9 @@ async def extract_sermon_outline(pdf_bytes: bytes) -> SermonOutline:
             json_text = "\n".join(lines[1:-1])
 
         outline_data = json.loads(json_text)
-        return SermonOutline(**outline_data)
+        outline = SermonOutline(**outline_data)
+        outline = await _normalize_scripture_refs(outline)
+        return await _assign_missing_verse_refs(outline)
     except json.JSONDecodeError as exc:
         logger.error("Failed to parse Claude response as JSON: %s", text_content[:500])
         raise LLMError(
@@ -339,7 +508,9 @@ async def extract_sermon_outline_from_text(text: str) -> SermonOutline:
             json_text = "\n".join(lines[1:-1])
 
         outline_data = json.loads(json_text)
-        return SermonOutline(**outline_data)
+        outline = SermonOutline(**outline_data)
+        outline = await _normalize_scripture_refs(outline)
+        return await _assign_missing_verse_refs(outline)
     except json.JSONDecodeError as exc:
         logger.error("Failed to parse Claude response as JSON: %s", text_content[:500])
         raise LLMError(
