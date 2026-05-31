@@ -54,6 +54,11 @@ class CommentaryLookupError(Exception):
     """Raised when commentary lookup fails."""
 
 
+_MULTI_CHAP_RE = re.compile(
+    r"^(\d?\s*[A-Za-z]+(?:\s+[A-Za-z]+)*)\s+(\d+):(\d+)\s*[-–]\s*(\d+):(\d+)$"
+)
+
+
 def _parse_reference(reference: str) -> tuple[str, int, int | None, int | None]:
     """
     Parse a scripture reference into (book, chapter, verse_start, verse_end).
@@ -63,8 +68,14 @@ def _parse_reference(reference: str) -> tuple[str, int, int | None, int | None]:
         "Romans 8:1-4" -> ("Romans", 8, 1, 4)
         "1 John 2:3" -> ("1 John", 2, 3, 3)
         "Genesis 1" -> ("Genesis", 1, None, None)
+
+    Cross-chapter refs raise CommentaryLookupError — use _parse_multi_chap_reference instead.
     """
     reference = reference.strip()
+
+    # Reject cross-chapter refs early so callers can route them separately
+    if _MULTI_CHAP_RE.match(reference):
+        raise CommentaryLookupError(f"Cross-chapter reference — use multi-chapter path: {reference}")
 
     # Pattern for book + chapter:verse-verse or book + chapter:verse or book + chapter
     # Handles numbered books like "1 John", "2 Kings"
@@ -226,7 +237,46 @@ async def fetch_commentary_for_reference(
     For verse-specific references (John 3:16), fetches verse commentary.
     For chapter references (Genesis 1), fetches chapter commentary.
     For verse ranges (Romans 8:1-4), fetches all entries overlapping the range.
+    For cross-chapter ranges (Acts 15:36-16:5), queries each chapter and merges.
     """
+    # Cross-chapter range (e.g. "Acts 15:36-16:5")
+    m = _MULTI_CHAP_RE.match(reference.strip())
+    if m:
+        book_raw = m.group(1).strip()
+        ch_start, v_start = int(m.group(2)), int(m.group(3))
+        ch_end, v_end = int(m.group(4)), int(m.group(5))
+        try:
+            commentary_id, name = _resolve_commentary(source)
+            canonical_book = commentariat_db.normalize_book(book_raw)
+        except Exception as exc:
+            logger.warning("Commentary lookup error for %s (%s): %s", reference, source.value, exc)
+            return None
+        all_entries: list[CommentaryEntry] = []
+        for ch in range(ch_start, ch_end + 1):
+            v_s = v_start if ch == ch_start else 1
+            v_e = v_end if ch == ch_end else 999
+            rows = commentariat_db.list_entries_for_verse_range(
+                commentary_id, canonical_book, ch, v_s, v_e
+            )
+            all_entries.extend(
+                CommentaryEntry(
+                    verse_start=r["verse_start"],
+                    verse_end=r["verse_end"],
+                    text=clean_commentary_text(r["text"]),
+                )
+                for r in rows
+            )
+        if not all_entries:
+            return None
+        return CommentaryResult(
+            source=source,
+            source_name=name,
+            book=canonical_book,
+            chapter=ch_start,
+            verse=v_start,
+            entries=all_entries,
+        )
+
     try:
         book, chapter, verse_start, verse_end = _parse_reference(reference)
     except CommentaryLookupError:
