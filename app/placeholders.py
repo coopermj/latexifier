@@ -8,6 +8,11 @@ from typing import Match
 
 import httpx
 
+from .anthropic_config import (
+    ANTHROPIC_API_VERSION,
+    ANTHROPIC_MESSAGES_URL,
+    ANTHROPIC_SONNET_MODEL,
+)
 from .config import get_settings
 from .commentary import (
     CommentarySource,
@@ -409,7 +414,7 @@ async def _analyze_scripture_with_ai(
         prompt = SCRIPTURE_ANALYSIS_PROMPT
 
     request_body = {
-        "model": "claude-sonnet-4-20250514",
+        "model": ANTHROPIC_SONNET_MODEL,
         "max_tokens": 4096,
         "messages": [
             {
@@ -422,13 +427,13 @@ async def _analyze_scripture_with_ai(
     headers = {
         "x-api-key": api_key,
         "content-type": "application/json",
-        "anthropic-version": "2023-06-01"
+        "anthropic-version": ANTHROPIC_API_VERSION
     }
 
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.anthropic.com/v1/messages",
+                ANTHROPIC_MESSAGES_URL,
                 json=request_body,
                 headers=headers,
                 timeout=30.0

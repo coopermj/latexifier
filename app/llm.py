@@ -4,6 +4,12 @@ import logging
 
 import httpx
 
+from .anthropic_config import (
+    ANTHROPIC_API_VERSION,
+    ANTHROPIC_HAIKU_MODEL,
+    ANTHROPIC_MESSAGES_URL,
+    ANTHROPIC_SONNET_MODEL,
+)
 from .config import get_settings
 from .models import SermonOutline
 
@@ -166,16 +172,16 @@ async def _normalize_scripture_refs(outline: SermonOutline) -> SermonOutline:
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.anthropic.com/v1/messages",
+                ANTHROPIC_MESSAGES_URL,
                 json={
-                    "model": "claude-haiku-4-5-20251001",
+                    "model": ANTHROPIC_HAIKU_MODEL,
                     "max_tokens": 512,
                     "messages": [{"role": "user", "content": prompt}],
                 },
                 headers={
                     "x-api-key": settings.anthropic_api_key,
                     "content-type": "application/json",
-                    "anthropic-version": "2023-06-01",
+                    "anthropic-version": ANTHROPIC_API_VERSION,
                 },
                 timeout=20.0,
             )
@@ -249,16 +255,16 @@ async def _assign_missing_verse_refs(outline: SermonOutline) -> SermonOutline:
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.anthropic.com/v1/messages",
+                ANTHROPIC_MESSAGES_URL,
                 json={
-                    "model": "claude-haiku-4-5-20251001",
+                    "model": ANTHROPIC_HAIKU_MODEL,
                     "max_tokens": 512,
                     "messages": [{"role": "user", "content": prompt}],
                 },
                 headers={
                     "x-api-key": settings.anthropic_api_key,
                     "content-type": "application/json",
-                    "anthropic-version": "2023-06-01",
+                    "anthropic-version": ANTHROPIC_API_VERSION,
                 },
                 timeout=20.0,
             )
@@ -317,7 +323,7 @@ async def extract_sermon_outline(pdf_bytes: bytes) -> SermonOutline:
 
     # Build the API request
     request_body = {
-        "model": "claude-sonnet-4-20250514",
+        "model": ANTHROPIC_SONNET_MODEL,
         "max_tokens": 4096,
         "messages": [
             {
@@ -343,13 +349,13 @@ async def extract_sermon_outline(pdf_bytes: bytes) -> SermonOutline:
     headers = {
         "x-api-key": api_key,
         "content-type": "application/json",
-        "anthropic-version": "2023-06-01"
+        "anthropic-version": ANTHROPIC_API_VERSION
     }
 
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.anthropic.com/v1/messages",
+                ANTHROPIC_MESSAGES_URL,
                 json=request_body,
                 headers=headers,
                 timeout=60.0
@@ -437,7 +443,7 @@ async def extract_sermon_outline_from_text(text: str) -> SermonOutline:
 
     # Build the API request with text content
     request_body = {
-        "model": "claude-sonnet-4-20250514",
+        "model": ANTHROPIC_SONNET_MODEL,
         "max_tokens": 4096,
         "messages": [
             {
@@ -455,13 +461,13 @@ async def extract_sermon_outline_from_text(text: str) -> SermonOutline:
     headers = {
         "x-api-key": api_key,
         "content-type": "application/json",
-        "anthropic-version": "2023-06-01"
+        "anthropic-version": ANTHROPIC_API_VERSION
     }
 
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "https://api.anthropic.com/v1/messages",
+                ANTHROPIC_MESSAGES_URL,
                 json=request_body,
                 headers=headers,
                 timeout=60.0

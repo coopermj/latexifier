@@ -3,9 +3,8 @@ from app.commentary import CommentaryResult, CommentarySource, CommentaryEntry
 from app.sermon_latex import _render_commentary_appendix
 
 
-@pytest.mark.asyncio
-async def test_render_commentary_appendix_uses_preloaded():
-    """When preloaded results are passed, they are rendered without fetching DB."""
+def test_render_commentary_appendix_uses_commentary_results():
+    """Commentary results render without fetching."""
     entry = CommentaryEntry(verse_start=1, verse_end=3, text="Test commentary text.")
     result = CommentaryResult(
         source=CommentarySource.MHC,
@@ -13,23 +12,14 @@ async def test_render_commentary_appendix_uses_preloaded():
         book="James", chapter=3, verse=1,
         entries=[entry],
     )
-    lines = await _render_commentary_appendix(
-        main_passage="James 3:1",
-        commentary_sources=[],
-        preloaded=[result],
-    )
+    lines = _render_commentary_appendix([result], {})
     combined = "\n".join(lines)
     assert "Matthew Henry" in combined
     assert "Test commentary text." in combined
 
 
-@pytest.mark.asyncio
-async def test_render_commentary_appendix_empty_when_no_sources_and_no_preloaded():
-    lines = await _render_commentary_appendix(
-        main_passage="James 3:1",
-        commentary_sources=[],
-        preloaded=None,
-    )
+def test_render_commentary_appendix_empty_without_commentaries():
+    lines = _render_commentary_appendix([], {})
     assert lines == []
 
 
