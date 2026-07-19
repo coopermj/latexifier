@@ -1,9 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
@@ -42,6 +42,19 @@ Include your API key in the `X-API-Key` header.
         {"url": "http://localhost:8000", "description": "Local development server"}
     ]
 )
+
+# Browsers don't treat 0.0.0.0 as a trustworthy origin (unlike localhost), so
+# downloads from it get stuck behind an "insecure download" gate. Redirect to
+# localhost so links clicked from uvicorn's startup log still work.
+@app.middleware("http")
+async def redirect_0000_to_localhost(request: Request, call_next):
+    host, _, port = request.headers.get("host", "").partition(":")
+    if host == "0.0.0.0":
+        netloc = f"localhost:{port}" if port else "localhost"
+        url = request.url.replace(netloc=netloc)
+        return RedirectResponse(str(url), status_code=307)
+    return await call_next(request)
+
 
 # CORS for ChatGPT and other integrations
 app.add_middleware(
@@ -88,6 +101,28 @@ async def root():
     return {"message": "LaTeXGen API", "docs": "/docs"}
 
 
+# Must be registered before the /{slug} route below, or /tex matches the slug.
+@app.get("/download/{pdf_id}/tex", tags=["utility"], summary="Download LaTeX source")
+async def download_tex(pdf_id: str):
+    """
+    Download the LaTeX source file for a compiled PDF.
+    """
+    result = get_tex(pdf_id)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="TeX file not found or expired."
+        )
+
+    tex_path, filename = result
+    return FileResponse(
+        path=tex_path,
+        media_type="application/x-tex",
+        filename=filename,
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
 @app.get("/download/{pdf_id}", tags=["utility"], summary="Download a compiled PDF")
 @app.get("/download/{pdf_id}/{slug}", tags=["utility"], include_in_schema=False)
 async def download_pdf(pdf_id: str, slug: str = ""):
@@ -108,27 +143,6 @@ async def download_pdf(pdf_id: str, slug: str = ""):
         path=str(pdf_path),
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
-    )
-
-
-@app.get("/download/{pdf_id}/tex", tags=["utility"], summary="Download LaTeX source")
-async def download_tex(pdf_id: str):
-    """
-    Download the LaTeX source file for a compiled PDF.
-    """
-    result = get_tex(pdf_id)
-    if result is None:
-        raise HTTPException(
-            status_code=404,
-            detail="TeX file not found or expired."
-        )
-
-    tex_path, filename = result
-    return FileResponse(
-        path=tex_path,
-        media_type="application/x-tex",
-        filename=filename,
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 
