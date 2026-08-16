@@ -41,6 +41,9 @@ PLACEHOLDER_PATTERN = re.compile(
     r"\[\[\s*scripture\s*:\s*([^\]]+?)\s*\]\]",
     re.IGNORECASE
 )
+_re_open_dquote = re.compile(r'(?:(?<=[\s(])|^)"(?=\S)', re.MULTILINE)
+_re_open_squote = re.compile(r"(?:(?<=[\s(])|^)'(?=\S)", re.MULTILINE)
+_re_wrong_open_squote = re.compile(r'(?:(?<=[\s(])|^)\u2019(?=\S)', re.MULTILINE)
 
 # Global set to collect Strong's numbers during processing
 _collected_strongs: set[str] = set()
@@ -71,6 +74,16 @@ def clear_collected_references() -> None:
 
 class ScripturePlaceholderError(Exception):
     """Raised when a scripture placeholder cannot be processed."""
+
+
+def _smart_scripture_quotes(text: str) -> str:
+    """Convert straight scripture quotes to Unicode curly quotes."""
+    text = _re_open_dquote.sub('\u201c', text)
+    text = text.replace('"', '\u201d')
+    text = _re_open_squote.sub('\u2018', text)
+    text = _re_wrong_open_squote.sub('\u2018', text)
+    text = text.replace("'", '\u2019')
+    return text
 
 
 @dataclass
@@ -292,15 +305,25 @@ def _format_scripture_body(
 
     clean = strongs_pattern.sub(strongs_repl, clean)
 
-    # Also handle ESV format: verse numbers at line starts like "[1]" or "1 "
-    verse_pattern = re.compile(r"(^|\s)\[?(\d+)\]?\s+", re.MULTILINE)
+    # Also handle ESV/plain-text verse numbers. Bracketed verse numbers may be
+    # inline; bare numbers are only verse markers at the start of a line.
+    bracketed_verse_pattern = re.compile(r"\[(\d+)\]\s+")
 
-    def verse_repl(match: Match[str]) -> str:
+    def bracketed_verse_repl(match: Match[str]) -> str:
+        if include_verse_numbers:
+            return f"\\vs{{{match.group(1)}}} "
+        return ""
+
+    converted = bracketed_verse_pattern.sub(bracketed_verse_repl, clean)
+
+    line_start_verse_pattern = re.compile(r"(?m)^([ \t]*)(\d+)\s+")
+
+    def line_start_verse_repl(match: Match[str]) -> str:
         if include_verse_numbers:
             return f"{match.group(1)}\\vs{{{match.group(2)}}} "
         return match.group(1)
 
-    converted = verse_pattern.sub(verse_repl, clean)
+    converted = line_start_verse_pattern.sub(line_start_verse_repl, converted)
 
     if include_verse_numbers:
         chapter = _extract_chapter(reference)
@@ -329,10 +352,7 @@ def _format_scripture_body(
             converted,
         )
 
-    # Convert straight double quotes to typographic curly quotes.
-    # Preceded by whitespace or start-of-line → opening quote; remainder → closing.
-    converted = re.sub(r'(?:(?<=[\s(])|^)"(?=\S)', '“', converted, flags=re.MULTILINE)
-    converted = converted.replace('"', '”')
+    converted = _smart_scripture_quotes(converted)
 
     # Clean up multiple spaces
     converted = re.sub(r'  +', ' ', converted)
@@ -724,9 +744,7 @@ async def process_scripture_placeholders(
                 strongs_word_map=strongs_word_map,
             )
             # Re-apply smart-quote conversion after AI (Claude may normalize Unicode quotes)
-            import re as _re
-            analyzed = _re.sub(r'(?:(?<=[\s(])|^)"(?=\S)', '\u201c', analyzed, flags=_re.MULTILINE)
-            analyzed = analyzed.replace('"', '\u201d')
+            analyzed = _smart_scripture_quotes(analyzed)
             rendered = _render_scripture(result.canonical or result.reference, spec.version, analyzed)
             replacements[spec.raw] = rendered
             # Collect reference for commentary appendix

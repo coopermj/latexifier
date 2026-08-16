@@ -24,7 +24,7 @@ def test_render_commentary_appendix_empty_without_commentaries():
 
 
 def test_preamble_contains_intword():
-    """The \intword command must be in the generated preamble."""
+    r"""The \intword command must be in the generated preamble."""
     import asyncio
     from app.sermon_latex import generate_sermon_latex
     from app.models import SermonOutline, SermonMetadata
@@ -34,9 +34,7 @@ def test_preamble_contains_intword():
         main_passage="Genesis 1:1",   # OT → no interlinear, but preamble always emitted
         points=[],
     )
-    latex = asyncio.get_event_loop().run_until_complete(
-        generate_sermon_latex(outline, include_main_passage=False)
-    )
+    latex = asyncio.run(generate_sermon_latex(outline, include_main_passage=False))
     assert r"\newcommand{\intword}" in latex
 
 
