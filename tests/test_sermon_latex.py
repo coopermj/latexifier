@@ -38,6 +38,23 @@ def test_preamble_contains_intword():
     assert r"\newcommand{\intword}" in latex
 
 
+def test_title_block_uses_josefin_for_author():
+    import asyncio
+    from app.sermon_latex import generate_sermon_latex
+    from app.models import SermonOutline, SermonMetadata
+
+    outline = SermonOutline(
+        metadata=SermonMetadata(title="Test", speaker="Pastor Tim Cochrell", date=None, series=None),
+        main_passage="Genesis 1:1",
+        points=[],
+    )
+
+    latex = asyncio.run(generate_sermon_latex(outline, include_main_passage=False))
+
+    assert r"{\josefin\@author}" in latex
+    assert r"\qtcoronation{\@author}" not in latex
+
+
 def test_render_interlinear_passage_structure():
     from app.sermon_latex import _render_interlinear_passage
 

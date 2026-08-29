@@ -434,6 +434,18 @@ document.getElementById('start-over-btn').addEventListener('click', () => {
     pdfBlobUrl = null;
     document.getElementById('notes').value = '';
     clearImagePreview(); clearBulletinPdf(); clearPrayerPdf();
+    document.getElementById('outline-summary').innerHTML = '';
+    document.getElementById('commentary-cards').innerHTML = '';
+    document.getElementById('extract-error-message').textContent = '';
+    document.getElementById('extract-error').classList.add('hidden');
+    document.getElementById('review-error-message').textContent = '';
+    document.getElementById('review-error').classList.add('hidden');
+    const dlLink = document.getElementById('download-link');
+    dlLink.href = '#';
+    dlLink.onclick = null;
+    const texLink = document.getElementById('download-tex-link');
+    texLink.href = '#';
+    texLink.style.display = '';
     document.querySelectorAll('#sermon-form input[type="checkbox"]').forEach(el => {
         el.checked = false;
     });

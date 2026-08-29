@@ -72,3 +72,37 @@ def test_scripture_apostrophes_stay_closing_quotes():
     assert "Jews\u2019 accusation won\u2019t stand" in formatted
     assert "Paul\u2018s" not in formatted
     assert "doesn\u2018t" not in formatted
+
+
+def test_cross_chapter_reference_starts_with_first_chapter():
+    formatted = _format_scripture_body(
+        "Acts 27\u201328:10",
+        "[1] Paul sailed for Rome.",
+        include_verse_numbers=True,
+        include_footnotes=False,
+    )
+
+    assert formatted.startswith("\\ch{27}\n\\vs{1} Paul sailed")
+    assert not formatted.startswith("\\ch{28}")
+
+
+def test_cross_chapter_reference_adds_chapter_marker_when_verses_reset():
+    formatted = _format_scripture_body(
+        "Acts 27\u201328:10",
+        (
+            "[39] They did not recognize the land. "
+            "[40] They cast off the anchors.\n\n"
+            "Paul on Malta\n\n"
+            "[1] After we were brought safely through. "
+            "[2] The native people showed kindness."
+        ),
+        include_verse_numbers=True,
+        include_footnotes=False,
+    )
+
+    assert formatted.startswith("\\ch{27}\n")
+    assert (
+        "{\\small\\textit{Paul on Malta}}\n\n"
+        "\\ch{28}\n\\vs{1} After we were brought safely through."
+    ) in formatted
+    assert "\\ch{28}\n\\vs{2}" not in formatted

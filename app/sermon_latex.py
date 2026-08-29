@@ -515,7 +515,7 @@ async def generate_sermon_latex(
   \begin{flushleft}
     {\josefin{\huge\textbf{\@title}}}\vspace{0.3cm}\newline
     {\josefin{\Large \@subtitle}}\newline
-    \qtcoronation{\@author}\newline
+    {\josefin\@author}\newline
     {\josefin\@date}%
   \end{flushleft}%
   \egroup

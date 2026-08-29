@@ -172,9 +172,9 @@ def _parse_spec(raw_spec: str) -> PlaceholderSpec:
 
 def _extract_chapter(reference: str) -> str | None:
     """Best-effort extraction of a chapter number from a reference string."""
-    colon_match = re.search(r"(\d+)\s*:\s*\d+", reference)
-    if colon_match:
-        return colon_match.group(1)
+    chapter_range = _extract_chapter_range(reference)
+    if chapter_range:
+        return str(chapter_range[0])
 
     numbers = re.findall(r"\b(\d+)\b", reference)
     if not numbers:
@@ -185,6 +185,61 @@ def _extract_chapter(reference: str) -> str | None:
 
     # If multiple numbers exist (e.g., "1 John 3:16"), the chapter is usually the penultimate number.
     return numbers[-2]
+
+
+def _extract_chapter_range(reference: str) -> tuple[int, int] | None:
+    """Best-effort extraction of start/end chapters from a scripture reference."""
+    normalized = (
+        reference.replace("\u2013", "-")
+        .replace("\u2014", "-")
+        .replace("\u2212", "-")
+    )
+    normalized = re.sub(r"^\s*[1-3]\s+", "", normalized)
+    start_match = re.search(r"\b(\d+)(?::\d+)?", normalized)
+    if not start_match:
+        return None
+
+    start_chapter = int(start_match.group(1))
+    end_chapter = start_chapter
+    tail = normalized[start_match.end():]
+    dash_match = re.search(r"-\s*(\d+)(?::(\d+))?", tail)
+
+    if dash_match:
+        if dash_match.group(2):
+            end_chapter = int(dash_match.group(1))
+        elif ":" not in start_match.group(0):
+            end_chapter = int(dash_match.group(1))
+
+    return start_chapter, end_chapter
+
+
+def _insert_chapter_markers_at_verse_resets(
+    text: str,
+    chapter_range: tuple[int, int] | None,
+) -> str:
+    """Insert chapter markers when verse numbers reset in a cross-chapter range."""
+    if not chapter_range:
+        return text
+
+    current_chapter, end_chapter = chapter_range
+    if end_chapter <= current_chapter:
+        return text
+
+    seen_verse = False
+    previous_verse = 0
+
+    def repl(match: Match[str]) -> str:
+        nonlocal current_chapter, previous_verse, seen_verse
+        verse = int(match.group(1))
+        prefix = ""
+        if seen_verse and verse <= previous_verse and current_chapter < end_chapter:
+            current_chapter += 1
+            prefix = f"\\ch{{{current_chapter}}}\n"
+        seen_verse = True
+        previous_verse = verse
+        return prefix + match.group(0)
+
+    return re.sub(r"\\vs\{(\d+)\}", repl, text)
 
 
 def _format_scripture_body(
@@ -326,7 +381,9 @@ def _format_scripture_body(
     converted = line_start_verse_pattern.sub(line_start_verse_repl, converted)
 
     if include_verse_numbers:
-        chapter = _extract_chapter(reference)
+        chapter_range = _extract_chapter_range(reference)
+        converted = _insert_chapter_markers_at_verse_resets(converted, chapter_range)
+        chapter = str(chapter_range[0]) if chapter_range else _extract_chapter(reference)
         if chapter:
             converted = f"\\ch{{{chapter}}}\n" + converted
 
