@@ -305,12 +305,35 @@ def _format_scripture_body(
 
     clean = strip_heading_and_footnotes(text)
 
-    # HTML paragraphs must survive tag stripping; otherwise NET verses from
-    # separate paragraphs are silently joined into one continuous paragraph.
-    clean = re.sub(r"</p\s*>\s*", "\n\n", clean, flags=re.IGNORECASE)
-    # NET starts each poetry line with <p class="poetry"> but often omits
-    # </p>. Keep those opening boundaries too, or adjacent words get joined.
-    clean = re.sub(r"<p\b[^>]*>", "\n", clean, flags=re.IGNORECASE)
+    # NET uses <p class="poetry"> for individual poetic lines, with optional
+    # closing tags at verse boundaries. Those are soft line breaks, not prose
+    # paragraphs. Preserve actual prose paragraphs without separating every verse.
+    poetry_paragraph = False
+    poetry_open = False
+
+    def paragraph_break(match: Match[str]) -> str:
+        nonlocal poetry_paragraph, poetry_open
+        closing, tag, attributes = match.groups()
+        if tag.lower() != "p":
+            # Native scripture headings must stay outside its poetry environment.
+            prefix = "\n\\end{poetry}\n" if poetry_open else ""
+            poetry_open = False
+            return prefix + f"<{closing}{tag}{attributes}>"
+        if match.group(1):
+            return " " if poetry_paragraph else "\n\n"
+        classes = re.search(r'''\bclass\s*=\s*["']([^"']*)["']''', attributes, re.IGNORECASE)
+        poetry_paragraph = bool(classes and "poetry" in classes.group(1).lower().split())
+        if poetry_paragraph:
+            prefix = "\n" if poetry_open else "\n\\begin{poetry}\n"
+            poetry_open = True
+            return prefix
+        prefix = "\n\\end{poetry}\n" if poetry_open else ""
+        poetry_open = False
+        return prefix + "\n\n"
+
+    clean = re.sub(r"\s*<(/?)(p|h[1-6])\b([^>]*)>\s*", paragraph_break, clean, flags=re.IGNORECASE)
+    if poetry_open:
+        clean += "\n\\end{poetry}"
     clean = re.sub(r"<br\b[^>]*>", "\n", clean, flags=re.IGNORECASE)
     clean = re.sub(r"\n{3,}", "\n\n", clean)
 
@@ -463,6 +486,7 @@ SCRIPTURE_ANALYSIS_PROMPT = '''Analyze this Bible passage and apply LaTeX format
 IMPORTANT RULES:
 - Return ONLY the modified scripture text, nothing else
 - Preserve all existing LaTeX commands (\\vs{}, \\ch{}, \\hyperlink{}, etc.)
+- Existing \\begin{poetry}...\\end{poetry} blocks come from explicit source markup. Preserve their boundaries and poetic lines; do not remove, nest, or turn them into prose.
 - Do NOT wrap entire passages as poetry if only portions are poetic
 - If no poetry is detected, return the text unchanged except for \\name{Lord} tags
 - Do NOT alter any punctuation, quotation marks, or non-structural characters — copy them byte-for-byte
@@ -479,6 +503,24 @@ def _scripture_content_tokens(text: str) -> list[str]:
     text = re.sub(r"\\hyperlink\{strongs-\d+\}", "", text)
     text = re.sub(r"\\[A-Za-z]+\*?", "", text)
     return re.findall(r"\w+", text.casefold())
+
+
+def _poetry_signature(text: str) -> list[list[list[str]]] | None:
+    """Capture native poetry lines; reject unbalanced or nested environments."""
+    blocks = []
+    start = None
+    for marker in re.finditer(r"\\(begin|end)\{poetry\}", text):
+        if marker.group(1) == "begin":
+            if start is not None:
+                return None
+            start = marker.end()
+        else:
+            if start is None:
+                return None
+            lines = [_scripture_content_tokens(line) for line in text[start:marker.start()].splitlines()]
+            blocks.append([line for line in lines if line])
+            start = None
+    return blocks if start is None else None
 
 
 async def _analyze_scripture_with_ai(
@@ -558,6 +600,11 @@ async def _analyze_scripture_with_ai(
                         if _scripture_content_tokens(result) != _scripture_content_tokens(text):
                             logger.warning("AI changed scripture words or numbers for %s; using original text", reference)
                             return text
+                        original_poetry = _poetry_signature(text)
+                        result_poetry = _poetry_signature(result)
+                        if result_poetry is None or (original_poetry and result_poetry != original_poetry):
+                            logger.warning("AI changed source poetry structure for %s; using original text", reference)
+                            return text
                         has_poetry = r"\begin{poetry}" in result
                         has_name = r"\name{" in result
                         logger.info("AI result for %s: poetry=%s, name_tags=%s", reference, has_poetry, has_name)
@@ -574,7 +621,7 @@ def _render_scripture(result_ref: str, version: ScriptureVersion, text: str) -> 
     r"""
     Wrap fetched text in the scripture environment from the scripture package.
     Uses \scripturefont to ensure scripture uses serif font, not main document font.
-    Poetry detection and divine name tagging are handled by AI analysis.
+    Source-marked poetry is retained; AI can detect additional poetry and tag names.
     """
     reference_arg = result_ref.replace("[", "").replace("]", "")
     version_arg = f"[version={version.value}]" if version else ""
@@ -621,6 +668,13 @@ def _render_scripture(result_ref: str, version: ScriptureVersion, text: str) -> 
     # A drop chapter must be in the same environment as its opening lines.
     # Before poetry it becomes a detached number above the verse instead.
     body = re.sub(r"(\\ch\{\d+\})\s*\\begin\{poetry\}", r"\\begin{poetry}\n\1", body)
+    # Native poetry obeys each newline, including one after a chapter command.
+    # Keep the drop chapter on its first poetic line rather than a line of its own.
+    body = re.sub(
+        r"\\begin\{poetry\}.*?\\end\{poetry\}",
+        lambda match: re.sub(r"(\\ch\{\d+\})\s+", r"\1", match.group()),
+        body, flags=re.DOTALL,
+    )
 
     return (
         f"\\begin{{scripture}}[{reference_arg}]{version_arg}\n"

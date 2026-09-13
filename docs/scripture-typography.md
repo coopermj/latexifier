@@ -5,6 +5,20 @@ describe the source design, rather than instructions for this project.
 
 ## Implementation plan
 
+Poetry clarification, September 13, 2026: preserve poetry using scripture.sty's
+native `poetry` environment. NET's `<p class="poetry">` elements describe poetic
+lines, not ordinary prose paragraphs. The formatter groups consecutive poetic
+lines into native environments before optional Anthropic analysis, closes them
+before prose or headings, and keeps the drop chapter inside the opening poetry.
+An unavailable or rejected AI response therefore retains source-marked poetry.
+AI responses that remove, nest, or alter those established poetic lines fall back
+to the source formatting. Prose paragraph boundaries remain intact.
+The sermon columns now use a `scripturecolumns` environment rather than passing
+their contents as macro arguments. This follows scripture.sty's documented
+restriction: its native poetry relies on active newlines (`\obeylines`), which
+are lost when content is read as a macro argument. A real PDF regression checks
+the vertical positions of three short poetry lines inside the sermon columns.
+
 - Vendor CTAN scripture v2.5 (2026-08-23), retain upstream source/license,
   and reapply Geneva's vertical verse-mark protection if absent upstream.
 - Ship the package and typography assets inside `app/tex` so Docker and all

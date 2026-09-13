@@ -1,0 +1,29 @@
+% Ezra SIL 2.51, unmodified. See EzraSIL-LICENSE.txt.
+\NeedsTeXFormat{LaTeX2e}[2022-11-01]
+\ProvidesPackage{latexgen-hebrew}[2026/09/13 Hebrew interlinear typography]
+\RequirePackage{fontspec}
+\RequirePackage{hyperref}
+\newfontfamily\hebrewfont[
+  Path=./, Renderer=HarfBuzz, Script=Hebrew,
+  BoldFont=SILEOT.ttf, ItalicFont=SILEOT.ttf,
+  BoldItalicFont=SILEOT.ttf,
+]{SILEOT.ttf}
+
+% Direction is local: Hebrew glyphs run RTL inside an LTR word/gloss box.
+% The containing paragraph arranges those boxes in Hebrew reading order.
+\newcommand{\hebrewtext}[1]{\leavevmode\hbox dir TRT{\hebrewfont #1}}
+\newcommand{\hebrewintword}[3]{%
+  \hbox dir TLT{%
+    \begin{tabular}[t]{@{}c@{}}%
+      {\fontsize{10}{12}\selectfont\hebrewtext{#1}}\\[2pt]%
+      {\scriptsize\scripturefont\hyperlink{lex-#3}{\shortstack{#2}}}%
+    \end{tabular}%
+  }\hskip5pt\relax
+}
+\newenvironment{hebrewverse}[1]{%
+  \par\begingroup
+  \pardir TRT\textdir TRT
+  \leftskip=0pt plus 1fil\rightskip=0pt\parfillskip=0pt
+  \parindent=0pt\lineskip=6pt\lineskiplimit=6pt
+  \noindent\hbox dir TLT{\color{gray}\scriptsize #1}\hskip5pt\relax
+}{\par\endgroup}

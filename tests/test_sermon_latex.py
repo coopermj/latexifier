@@ -129,8 +129,8 @@ def test_render_lexicon_appendix_empty():
 
 
 @pytest.mark.asyncio
-async def test_generate_sermon_latex_ot_no_interlinear():
-    """OT passage → no interlinear hypertarget, no lexicon section."""
+async def test_generate_sermon_latex_missing_hebrew_falls_back_to_english():
+    """Unavailable Hebrew data retains the English main passage."""
     from unittest.mock import patch
     from app.sermon_latex import generate_sermon_latex
     from app.models import SermonOutline, SermonMetadata
@@ -140,7 +140,8 @@ async def test_generate_sermon_latex_ot_no_interlinear():
         main_passage="Genesis 1:1",
         points=[],
     )
-    with patch("app.sermon_latex.fetch_scripture", side_effect=Exception("no network")):
+    with patch("app.sermon_latex.fetch_scripture", side_effect=Exception("no network")), \
+         patch("app.sermon_latex.get_hebrew_passage_words", return_value=None):
         latex = await generate_sermon_latex(outline, include_main_passage=True)
 
     assert r"\hypertarget{interlinear}{}" not in latex

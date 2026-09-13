@@ -34,6 +34,10 @@ that source independently (along with the existing sermon fonts).
   the supplied `SnellRoundhand/Variable-PS/` folder. `latexgen-snell.sty` selects
   these files for the author line. They contain static CFF outlines and need no
   conversion or operating-system font installation.
+- `SILEOT.ttf`: unmodified Ezra SIL 2.51 for Hebrew and Aramaic. Selected by
+  filename with HarfBuzz shaping in `latexgen-hebrew.sty`. Hebrew paragraphs run
+  right to left while each gloss stays left to right. See `EzraSIL-LICENSE.txt`
+  and `docs/hebrew-interlinear.md` for the source archive and checksum.
 - `upstream/geneve-LICENSE`: source project's GPLv3 license.
 - `upstream/SHA256SUMS`: snapshot hashes for asset review.
 

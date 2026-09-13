@@ -28,7 +28,7 @@ async def test_slide_additions_render_at_their_matching_section():
     assert "Titus 2:14" not in tex
     assert "slide-timeline.png" in tex
     assert "slide-table.png" in tex
-    assert "Slide 2" in tex
+    assert all(f"Slide {number}" not in tex for number in (1, 2, 3))
     assert "[[scripture:Habakkuk 3:2" in tex
 
 

@@ -10,6 +10,10 @@ The review retains the original PDF and analysis in browser memory. Generate sen
 
 ## API
 
+Source slide numbers appear only in the review screen. The generated PDF labels
+pullouts with Bible references and visuals with descriptive captions, without
+"Slide 17" or similar source-slide tags.
+
 - `POST /web/extract`: existing fields plus optional `slides_pdf` (base64). Response adds `slide_analysis` and `slide_previews` (PNG base64 by generated asset filename).
 - `POST /web/generate`: optional `slides_pdf` plus reviewed `slide_analysis`. If the PDF is supplied without analysis, generation analyzes it. Analysis without its PDF is rejected.
 - Analysis contains `pdf_sha256`, `page_count`, `items`, and `unmatched_slides`. Items contain `id`, `kind`, `target`, `label`, `slide`, `enabled`, and either `reference` or normalized `bbox`.

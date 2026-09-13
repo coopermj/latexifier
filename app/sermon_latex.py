@@ -10,6 +10,8 @@ from .commentary import CommentarySource, fetch_commentary_for_reference, Commen
 from .scripture import fetch_scripture, ScriptureVersion, ScriptureLookupOptions
 from .lsj import get_lsj_entry
 from .interlinear import get_passage_words, is_nt_passage
+from .hebrew_interlinear import get_hebrew_passage_words
+from .hebrew_rendering import interlinear_label, render_hebrew_interlinear, render_hebrew_lexicon
 
 logger = logging.getLogger(__name__)
 
@@ -429,15 +431,12 @@ async def generate_sermon_latex(
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}%
 }
 
-% Two-column scripture + notes (using paracol for page breaks)
-\newcommand{\scripturebullets}[2]{%
+% Keep the body out of macro arguments: native poetry needs active newlines.
+\newenvironment{scripturecolumns}{%
   \columnratio{0.48}
   \begin{paracol}{2}
-    \raggedright
-    #1
-  \switchcolumn
-    \raggedright
-    #2
+  \raggedright
+}{%
   \end{paracol}
 }
 
@@ -485,6 +484,7 @@ async def generate_sermon_latex(
 ]
 % Geneva scripture typography, with pinned package and font assets.
 \usepackage{latexgen-scripture}
+\usepackage{latexgen-hebrew}
 \newfontfamily\wordstudy{Times New Roman}
 \newfontfamily\greekfont{Times New Roman}
 \usepackage{latexgen-josefin}
@@ -571,7 +571,9 @@ async def generate_sermon_latex(
     # Determine interlinear eligibility before building TOC
     nt_passage = include_main_passage and bool(main_passage) and is_nt_passage(main_passage)
     passage_words = get_passage_words(main_passage) if nt_passage else None
-    interlinear_active = nt_passage and passage_words is not None
+    hebrew_words = (get_hebrew_passage_words(main_passage)
+                    if include_main_passage and main_passage and not nt_passage else None)
+    interlinear_active = bool(passage_words or hebrew_words)
 
     # Add table of contents — vfill when image present (distributes space), fixed gap otherwise
     lines.append("")
@@ -582,7 +584,8 @@ async def generate_sermon_latex(
     lines.append(r"\begin{center}")
     lines.append(r"\begin{tabular}{l}")
     if interlinear_active:
-        lines.append(r"\hyperlink{interlinear}{Greek Interlinear} \\[0.3cm]")
+        label = interlinear_label(hebrew_words) if hebrew_words else "Greek Interlinear"
+        lines.append(rf"\hyperlink{{interlinear}}{{{label}}} \\[0.3cm]")
     lines.append(r"\hyperlink{sermonnotes}{Sermon Notes} \\[0.3cm]")
     if commentary_sources or commentary_overrides is not None:
         lines.append(r"\hyperlink{commentary}{Commentary} \\[0.3cm]")
@@ -599,9 +602,11 @@ async def generate_sermon_latex(
     lines.append(r"\newpage{}")
     lines.append("")
 
-    # Main passage: interlinear (NT) or multicols ESV (OT/fallback)
+    # Main passage: original-language interlinear or English-only fallback.
     if include_main_passage and main_passage:
-        if interlinear_active:
+        if hebrew_words:
+            lines.extend(render_hebrew_interlinear(hebrew_words, main_passage, scripture_version))
+        elif passage_words:
             lines.extend(_render_interlinear_passage(passage_words, main_passage, scripture_version))
         else:
             lines.append(r"\begin{multicols}{2}")
@@ -696,6 +701,8 @@ async def generate_sermon_latex(
     # Lexicon appendix (NT passages only)
     if interlinear_active and passage_words:
         lines.extend(_render_lexicon_appendix(passage_words))
+    elif hebrew_words:
+        lines.extend(render_hebrew_lexicon(hebrew_words))
 
     # Include bulletin PDF if provided
     if include_bulletin:
@@ -726,14 +733,14 @@ def _render_slide_visuals(items: list[SlideItem]) -> list[str]:
             r"\begin{center}",
             rf"\includegraphics[width=\linewidth,height=0.27\textheight,keepaspectratio]{{{asset_name(item)}}}",
             r"\par\smallskip",
-            rf"{{\footnotesize {escape_latex(item.label)} \textperiodcentered\ Slide {item.slide}}}",
+            rf"{{\footnotesize {escape_latex(item.label)}}}",
             r"\end{center}",
         ])
     return lines
 
 
 def _render_slide_scriptures(items: list[SlideItem], version: str) -> list[str]:
-    """Inset Scripture pullouts in the notes column, with source provenance."""
+    """Inset Scripture pullouts in the notes column, labeled by Bible reference."""
     lines = []
     for item in items:
         if not item.enabled or item.kind != "scripture" or not item.reference:
@@ -742,7 +749,7 @@ def _render_slide_scriptures(items: list[SlideItem], version: str) -> list[str]:
             r"\par\medskip\begingroup\small\setlength{\parfillskip}{0pt plus 1fil}",
             r"\noindent{\color{highlight}\rule{\linewidth}{0.7pt}}\par\nobreak",
             rf"{{\josefin\bfseries\color{{highlight}} {escape_latex(item.reference)}}}",
-            rf"\hfill{{\footnotesize Slide {item.slide}}}\par\nobreak\smallskip",
+            r"\par\nobreak\smallskip",
             scripture_placeholder(item.reference, version, nolinks=True),
             r"\par\nobreak\noindent{\color{highlight}\rule{\linewidth}{0.4pt}}",
             r"\par\endgroup\medskip",
@@ -827,13 +834,12 @@ def _render_point(
             note_lines.append(r"\vspace{2in}")
             notes_content = "\n".join(note_lines)
 
-            lines.append(r"\scripturebullets")
-            lines.append(r"{%")
+            lines.append(r"\begin{scripturecolumns}")
             lines.append(scripture_content)
-            lines.append(r"}%")
-            lines.append(r"{%")
+            lines.append(r"\switchcolumn")
+            lines.append(r"\raggedright")
             lines.append(notes_content)
-            lines.append(r"}%")
+            lines.append(r"\end{scripturecolumns}")
         else:
             # Full-width layout (no scripture)
             lines.extend(note_lines)
@@ -924,13 +930,12 @@ def _render_subpoint(
         notes_content = "\n".join(note_lines)
 
         # Two-column layout with paracol (links stripped for compatibility)
-        lines.append(r"\scripturebullets")
-        lines.append(r"{%")
+        lines.append(r"\begin{scripturecolumns}")
         lines.append(scripture_content)
-        lines.append(r"}%")
-        lines.append(r"{%")
+        lines.append(r"\switchcolumn")
+        lines.append(r"\raggedright")
         lines.append(notes_content)
-        lines.append(r"}%")
+        lines.append(r"\end{scripturecolumns}")
     else:
         # Full-width layout (no scripture)
         if sub.content:
