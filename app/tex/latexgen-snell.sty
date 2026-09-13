@@ -1,0 +1,9 @@
+% Use the supplied OpenType faces by filename for portable author typography.
+\NeedsTeXFormat{LaTeX2e}[2022-11-01]
+\ProvidesPackage{latexgen-snell}[2026/09/13 Bundled Snell Roundhand author font]
+\RequirePackage{fontspec}
+\newfontfamily\authorfont[
+  Path=./,
+  UprightFont=SnellRoundhand.otf,
+  BoldFont=SnellRoundhand-Bold.otf,
+]{Snell Roundhand}

@@ -1,0 +1,12 @@
+--- scripture.sty
++++ scripture.sty
+@@ -785,6 +785,9 @@
+               { \scripturecurrentchapter }
+               { \scripturecurrentverse }
+           }
++        % LOCAL PATCH from geneve_1564 (2026-07-17), retained on v2.5:
++        % Bind vertical verse marks to their text to protect headings.
++        \mode_if_vertical:T { \penalty 10000 }
+       }
+   }
+ \hook_gput_code:nnn { insertmark } { scripture }

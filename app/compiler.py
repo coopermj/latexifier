@@ -11,6 +11,7 @@ from pathlib import Path
 from .config import get_settings
 from .models import CompileRequest, FileItem, TexEngine, OutputFormat
 from .commentary import CommentarySource
+from .tex_assets import copy_bundled_tex_assets
 from .placeholders import (
     ScripturePlaceholderError,
     process_scripture_placeholders,
@@ -132,6 +133,8 @@ async def compile_latex(request: CompileRequest) -> tuple[bytes | str, str]:
                 shutil.copy(map_file, work_dir / map_file.name)
             for map_file in maps_dir.glob("*.png"):
                 shutil.copy(map_file, work_dir / map_file.name)
+
+        copy_bundled_tex_assets(work_dir)
 
         # Replace scripture placeholders before compilation
         try:

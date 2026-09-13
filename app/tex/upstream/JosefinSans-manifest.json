@@ -1,0 +1,62 @@
+{
+  "JosefinSans-BoldItalic.otf": {
+    "source": "josefin/.15622.otf",
+    "sha256": "a966596f7ffae1417ed9401f576e261464d7e469c8557c08479397f2fcfdbdc1",
+    "full_name": "Josefin Sans Bold Italic",
+    "version": "Version 2.000"
+  },
+  "JosefinSans-Bold.otf": {
+    "source": "josefin/.15623.otf",
+    "sha256": "d274dd5bd6b755a1b36bb594d2f46878e878f2a25cc0804b77a2737a41fbcf9c",
+    "full_name": "Josefin Sans Bold",
+    "version": "Version 2.000"
+  },
+  "JosefinSans-Light.otf": {
+    "source": "josefin/.15624.otf",
+    "sha256": "33d16e2768d3b673067fc35e007f373391b1770ad02fd150c9c512e2d159e854",
+    "full_name": "Josefin Sans Light",
+    "version": "Version 2.000"
+  },
+  "JosefinSans-Italic.otf": {
+    "source": "josefin/.15625.otf",
+    "sha256": "007d596724ffc05bf6cae55f2edad642c9d7b82edd00be6da82662d0d14ca38b",
+    "full_name": "Josefin Sans Italic",
+    "version": "Version 2.000"
+  },
+  "JosefinSans-LightItalic.otf": {
+    "source": "josefin/.15626.otf",
+    "sha256": "b7b3f234528de9267ea283ed782557994fa28604700d95cd36a67661c244dad3",
+    "full_name": "Josefin Sans Light Italic",
+    "version": "Version 2.000"
+  },
+  "JosefinSans-Regular.otf": {
+    "source": "josefin/.15627.otf",
+    "sha256": "f9e41ea161c3c9550c5067406c382e3268c89652ed5fe9ac9a5f904a36d4a085",
+    "full_name": "Josefin Sans Regular",
+    "version": "Version 2.000"
+  },
+  "JosefinSans-ThinItalic.otf": {
+    "source": "josefin/.15628.otf",
+    "sha256": "0775dba9b7f12f6d0d7956a7f0e423f0826e69d4643d2da5b3c70db18024503b",
+    "full_name": "Josefin Sans Thin Italic",
+    "version": "Version 2.000"
+  },
+  "JosefinSans-SemiBold.otf": {
+    "source": "josefin/.15629.otf",
+    "sha256": "80ba818d635fd114c4af8ae09f179b084a46bc9c5e6e992eb38d1a612ff5860c",
+    "full_name": "Josefin Sans SemiBold",
+    "version": "Version 2.000"
+  },
+  "JosefinSans-Thin.otf": {
+    "source": "josefin/.15630.otf",
+    "sha256": "55cd9f6849e996f39d9059e8e1dceb11409b96e58861d9be9414f533260921fb",
+    "full_name": "Josefin Sans Thin",
+    "version": "Version 2.000"
+  },
+  "JosefinSans-SemiBoldItalic.otf": {
+    "source": "josefin/.15631.otf",
+    "sha256": "d98cbe6d2692176e09035079b8213cbaaab3f256621648e62109277b92f9a93e",
+    "full_name": "Josefin Sans SemiBold Italic",
+    "version": "Version 2.000"
+  }
+}

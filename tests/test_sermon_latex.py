@@ -38,7 +38,7 @@ def test_preamble_contains_intword():
     assert r"\newcommand{\intword}" in latex
 
 
-def test_title_block_uses_josefin_for_author():
+def test_title_block_uses_snell_roundhand_for_author():
     import asyncio
     from app.sermon_latex import generate_sermon_latex
     from app.models import SermonOutline, SermonMetadata
@@ -51,7 +51,11 @@ def test_title_block_uses_josefin_for_author():
 
     latex = asyncio.run(generate_sermon_latex(outline, include_main_passage=False))
 
-    assert r"{\josefin\@author}" in latex
+    assert r"{\authorfont\@author}" in latex
+    assert r"\usepackage{latexgen-snell}" in latex
+    assert r"{\josefin\@author}" not in latex
+    assert r"\usepackage{latexgen-josefin}" in latex
+    assert r"\newfontfamily\josefin{Josefin Sans}" not in latex
     assert r"\qtcoronation{\@author}" not in latex
 
 
@@ -170,3 +174,28 @@ async def test_generate_sermon_latex_nt_toc_has_interlinear_and_lexicon():
     assert r"\section{Lexicon}" in latex
     assert r"\hypertarget{interlinear}{}" in latex
     assert r"\begin{multicols}{2}" not in latex   # no fallback multicols for NT
+
+
+@pytest.mark.asyncio
+async def test_rebels_sermon_retains_section_intro_before_first_subpoint():
+    """A section's own prose must survive when it also has lettered subpoints."""
+    import json
+    from pathlib import Path
+    from app.models import SermonOutline
+    from app.sermon_latex import generate_sermon_latex, escape_latex
+
+    fixture = Path(__file__).parent / "fixtures" / "rebels-and-their-redeemer.json"
+    outline = SermonOutline.model_validate(json.loads(fixture.read_text()))
+    tex = await generate_sermon_latex(outline)
+    intro = escape_latex(outline.points[2].content)
+    assert tex.count(intro) == 1
+    assert tex.index(r"\section{Repentance}") < tex.index(intro) < tex.index(r"\subsection{A. Conceal}")
+    assert tex.index(intro) < tex.index(r"\subsection{B. Confess}")
+    for point in outline.points:
+        if point.content:
+            assert escape_latex(point.content) in tex
+        for sub in point.sub_points:
+            if sub.content:
+                assert escape_latex(sub.content) in tex
+            for bullet in sub.bullets:
+                assert escape_latex(bullet) in tex

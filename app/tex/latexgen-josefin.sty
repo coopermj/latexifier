@@ -1,0 +1,12 @@
+% Use the user's supplied OpenType faces, never an installed namesake.
+\NeedsTeXFormat{LaTeX2e}[2022-11-01]
+\ProvidesPackage{latexgen-josefin}[2026/09/13 Pinned Josefin Sans fonts]
+\RequirePackage{fontspec}
+\newfontfamily\josefin[
+  Path=./,
+  Extension=.otf,
+  UprightFont=JosefinSans-Regular,
+  BoldFont=JosefinSans-Bold,
+  ItalicFont=JosefinSans-Italic,
+  BoldItalicFont=JosefinSans-BoldItalic,
+]{Josefin Sans}

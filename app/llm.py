@@ -6,9 +6,8 @@ import httpx
 
 from .anthropic_config import (
     ANTHROPIC_API_VERSION,
-    ANTHROPIC_HAIKU_MODEL,
     ANTHROPIC_MESSAGES_URL,
-    ANTHROPIC_SONNET_MODEL,
+    ANTHROPIC_MODEL,
 )
 from .config import get_settings
 from .models import SermonOutline
@@ -132,7 +131,7 @@ class LLMError(Exception):
 
 
 async def _normalize_scripture_refs(outline: SermonOutline) -> SermonOutline:
-    """Use Haiku to qualify partial verse refs (e.g. 'v. 4' → 'Titus 3:4').
+    """Use Fable to qualify partial verse refs (e.g. 'v. 4' → 'Titus 3:4').
 
     Collects all scripture_verse / scripture_refs fields, sends them to Claude
     with the main passage for context, patches corrections back into the outline.
@@ -174,8 +173,9 @@ async def _normalize_scripture_refs(outline: SermonOutline) -> SermonOutline:
             response = await client.post(
                 ANTHROPIC_MESSAGES_URL,
                 json={
-                    "model": ANTHROPIC_HAIKU_MODEL,
-                    "max_tokens": 512,
+                    "model": ANTHROPIC_MODEL,
+                    "max_tokens": 4096,
+                    "output_config": {"effort": "low"},
                     "messages": [{"role": "user", "content": prompt}],
                 },
                 headers={
@@ -183,11 +183,14 @@ async def _normalize_scripture_refs(outline: SermonOutline) -> SermonOutline:
                     "content-type": "application/json",
                     "anthropic-version": ANTHROPIC_API_VERSION,
                 },
-                timeout=20.0,
+                timeout=60.0,
             )
             response.raise_for_status()
 
-        text = response.json()["content"][0]["text"].strip()
+        text = "".join(
+            block.get("text", "") for block in response.json().get("content", [])
+            if block.get("type") == "text"
+        ).strip()
         if text.startswith("```"):
             text = "\n".join(text.split("\n")[1:-1])
         corrections: dict[str, str] = json.loads(text)
@@ -216,7 +219,7 @@ async def _normalize_scripture_refs(outline: SermonOutline) -> SermonOutline:
 
 
 async def _assign_missing_verse_refs(outline: SermonOutline) -> SermonOutline:
-    """Use Haiku to infer main-passage verse refs for points/sub-points that have none.
+    """Use Fable to infer main-passage verse refs for points/sub-points that have none.
 
     Only fills in items with no existing ref — does not overwrite anything.
     """
@@ -257,8 +260,9 @@ async def _assign_missing_verse_refs(outline: SermonOutline) -> SermonOutline:
             response = await client.post(
                 ANTHROPIC_MESSAGES_URL,
                 json={
-                    "model": ANTHROPIC_HAIKU_MODEL,
-                    "max_tokens": 512,
+                    "model": ANTHROPIC_MODEL,
+                    "max_tokens": 4096,
+                    "output_config": {"effort": "low"},
                     "messages": [{"role": "user", "content": prompt}],
                 },
                 headers={
@@ -266,11 +270,14 @@ async def _assign_missing_verse_refs(outline: SermonOutline) -> SermonOutline:
                     "content-type": "application/json",
                     "anthropic-version": ANTHROPIC_API_VERSION,
                 },
-                timeout=20.0,
+                timeout=60.0,
             )
             response.raise_for_status()
 
-        text = response.json()["content"][0]["text"].strip()
+        text = "".join(
+            block.get("text", "") for block in response.json().get("content", [])
+            if block.get("type") == "text"
+        ).strip()
         if text.startswith("```"):
             text = "\n".join(text.split("\n")[1:-1])
         assignments: dict = json.loads(text)
@@ -323,8 +330,9 @@ async def extract_sermon_outline(pdf_bytes: bytes) -> SermonOutline:
 
     # Build the API request
     request_body = {
-        "model": ANTHROPIC_SONNET_MODEL,
-        "max_tokens": 4096,
+        "model": ANTHROPIC_MODEL,
+        "max_tokens": 8192,
+        "output_config": {"effort": "medium"},
         "messages": [
             {
                 "role": "user",
@@ -358,7 +366,7 @@ async def extract_sermon_outline(pdf_bytes: bytes) -> SermonOutline:
                 ANTHROPIC_MESSAGES_URL,
                 json=request_body,
                 headers=headers,
-                timeout=60.0
+                timeout=120.0
             )
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:
@@ -443,8 +451,9 @@ async def extract_sermon_outline_from_text(text: str) -> SermonOutline:
 
     # Build the API request with text content
     request_body = {
-        "model": ANTHROPIC_SONNET_MODEL,
-        "max_tokens": 4096,
+        "model": ANTHROPIC_MODEL,
+        "max_tokens": 8192,
+        "output_config": {"effort": "medium"},
         "messages": [
             {
                 "role": "user",
@@ -470,7 +479,7 @@ async def extract_sermon_outline_from_text(text: str) -> SermonOutline:
                 ANTHROPIC_MESSAGES_URL,
                 json=request_body,
                 headers=headers,
-                timeout=60.0
+                timeout=120.0
             )
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:

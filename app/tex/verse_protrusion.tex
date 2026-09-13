@@ -1,0 +1,162 @@
+%% verse_protrusion.tex
+%% Microtype protrusion for verse numbers (edition-portable).
+%% Requires, loaded BEFORE this file: fontspec (main font set), microtype, scripture.
+%% Effect: a verse number at the start of a line hangs a tuned partial amount
+%% into the left margin. Mid-line numbers are unaffected (microtype only
+%% protrudes line-edge glyphs). Font-agnostic: uses OpenType superior figures
+%% of the CURRENT body font; falls back to \textsuperscript if unavailable.
+%%
+%% WORKING MECHANISM (the bits that are easy to get wrong):
+%%   1. *** NO named context, NO \microtypecontext. *** Use a PLAIN, default
+%%      \SetProtrusion (neither [name=...] nor [context=...]). microtype then
+%%      MERGES these entries into whatever protrusion list it loads for any
+%%      matching font, so the superior-figure instance gets the codepoints
+%%      automatically. The earlier [context=verseprot] +
+%%      \microtypecontext{protrusion=verseprot} approach was a NO-OP: the
+%%      verbose log showed the context switch loaded an auto-generated EMPTY
+%%      list named `<file>/<line>' and the named list never bound to the active
+%%      superior font, so lpcode stayed 0 (measured: zero movement at 600 dpi).
+%%      The global config is safe here because the superscript-codepoint glyphs
+%%      (U+00B9 etc.) appear in this document ONLY as verse numbers (body prose
+%%      never emits superior figures), so the entries are effectively scoped to
+%%      verse numbers already. PROOF the binding now works: with the global
+%%      config, `\the\lpcode\font 185' (U+00B9) reports a nonzero value on the
+%%      VerticalPosition=Superior instance (was 0/unset before), and 600 dpi
+%%      measurement shows the leading verse number's leftmost ink ~9 px left of
+%%      where it sits with the feature off.
+%%   2. Font set is the full 5-axis wildcard { font = */*/*/*/* } so it matches
+%%      BOTH the body font instance AND the separate font instance that fontspec
+%%      spins up for VerticalPosition=Superior (e.g. EBGaramond(1)).
+%%   3. Each entry is char = {left,right} (ONE brace, comma-separated). Left-only
+%%      hang -> {350,0}. Two separate braces {350}{0} is wrong syntax.
+%%   4. To retune the factor, edit \verseprot@factor (one place). The \edef
+%%      below expands it into all ten entries before passing to \SetProtrusion.
+%%      TWO critical constraints on the expansion approach:
+%%      (a) microtype stores \SetProtrusion's third arg via \gdef -- if we pass
+%%          `{\verseprot@list}' as the arg, the macro TOKEN (not its expansion)
+%%          is stored, and microtype's \MT@set@codes later sees \verseprot@list
+%%          as a single opaque token, not as the hex-entry list. We therefore use
+%%          `\edef\verseprot@do@protrusion{...{\verseprot@list}...}' to EXPAND the
+%%          list inline and store the literal tokens in \verseprot@do@protrusion
+%%          before \SetProtrusion is ever called.
+%%      (b) microtype reads the \SetProtrusion list with \catcode` '=9 (spaces
+%%          ignored), but our \edef runs with normal catcodes where space is
+%%          catcode 10. If the expanded list contains catcode-10 space tokens,
+%%          \MT@pr@split@val (which reads `left,right\relax') sees a leading space
+%%          before `{350,0}' and can't find the `,\relax' terminator -> runaway.
+%%          The fix: write the list with NO spaces (all newlines suppressed by `%'
+%%          and no space around `=' or `{'). microtype's own parser ignores the
+%%          lack of spaces; it just needs the correct token sequence.
+%%   5. *** THE OTHER KEY FIX ***  microtype (luatex) keys protrusion by the codepoint
+%%      of the glyph AS IT APPEARS IN THE NODE LIST, i.e. AFTER GSUB shaping.
+%%      VerticalPosition=Superior runs the OpenType `sups' feature, which in
+%%      EB Garamond substitutes each ASCII digit for the glyph at its Unicode
+%%      SUPERSCRIPT codepoint:
+%%          0->U+2070  1->U+00B9  2->U+00B2  3->U+00B3
+%%          4..9 -> U+2074..U+2079
+%%      Therefore the list MUST be keyed on those superscript codepoints, NOT on
+%%      the ASCII digits 0-9. (Keying 0-9 = U+0030..U+0039 was the bug: those
+%%      input glyphs never reach the line because sups replaces them, so the
+%%      lpcode never bound to the rendered superior glyph -> ZERO protrusion,
+%%      verified by 600 dpi pixel measurement and by dumping the substituted
+%%      glyph names with fontTools: three -> uni00B3, etc.)
+%%   6. microtype protrudes GLYPH nodes, not boxes. The substituted superior
+%%      figures are real glyphs and protrude; \textsuperscript (a raised box)
+%%      does not -- hence the OpenType path is required for the hang, with
+%%      \textsuperscript only as the non-protruding fallback when the font lacks
+%%      superior figures.
+%% Verified by measurement (tests/verse_protrusion_visual_check.tex, 600 dpi):
+%% with this setup the leading verse number's leftmost ink sits measurably LEFT
+%% of the column rule, while mid-line numbers stay inline; feature ON vs OFF
+%% now differs at the left edge.
+%%
+%% PORTABILITY NOTE: the superscript-codepoint mapping above is what EB Garamond
+%% (and most fonts following the Unicode/AGL convention) emit for `sups'. A font
+%% whose superior figures live at private-use or `.sups'-named glyph slots with
+%% no Unicode value would need different keys; in that case microtype cannot
+%% address them by codepoint and the \textsuperscript fallback (no protrusion)
+%% is the safe outcome.
+\makeatletter
+
+% --- Precondition guards: raise a clear error if required packages are absent.
+%     Without microtype (\SetProtrusion) or fontspec (\addfontfeature) the file
+%     would fail later with a cryptic "Undefined control sequence" inside an \edef.
+\@ifundefined{SetProtrusion}{%
+  \PackageError{verse_protrusion}%
+    {microtype must be loaded before verse_protrusion.tex}%
+    {Add \string\usepackage{microtype} (and fontspec) before \string\input{verse_protrusion}.}%
+}{}
+\@ifundefined{addfontfeature}{%
+  \PackageError{verse_protrusion}%
+    {fontspec must be loaded before verse_protrusion.tex}%
+    {Add \string\usepackage{fontspec} (and set a main font) before \string\input{verse_protrusion}.}%
+}{}
+
+% --- Tunable: partial left-protrusion factor (out of 1000 = one glyph width).
+%     Edit ONLY this line to retune the hang; the \edef below propagates it
+%     into all ten digit entries automatically.
+\def\verseprot@factor{350}
+
+% Build the entry list with the factor expanded in, NO spaces anywhere
+% (catcode-10 spaces in the stored token list break \MT@pr@split@val --
+%  see header note #4b).  Every newline is suppressed by a trailing `%'.
+\edef\verseprot@list{%
+"2070={\verseprot@factor,0},%
+"00B9={\verseprot@factor,0},%
+"00B2={\verseprot@factor,0},%
+"00B3={\verseprot@factor,0},%
+"2074={\verseprot@factor,0},%
+"2075={\verseprot@factor,0},%
+"2076={\verseprot@factor,0},%
+"2077={\verseprot@factor,0},%
+"2078={\verseprot@factor,0},%
+"2079={\verseprot@factor,0}}
+
+% --- Manual override (an edition may force the feature off):
+\newif\ifverseprotrusion  \verseprotrusiontrue
+
+% --- Global (default) microtype protrusion: left-only hang on the SUPERSCRIPT
+%     glyphs that the `sups' feature substitutes for the digits 0-9 (see header
+%     note #5). Keyed on the substituted Unicode codepoints, NOT on ASCII 0-9.
+%     NO [name=...] and NO [context=...]: this MERGES into the protrusion list
+%     microtype loads for the VerticalPosition=Superior font instance, which is
+%     what actually binds the codepoints (header note #1). Safe globally because
+%     these superscript glyphs only ever appear as verse numbers in this doc.
+%     \verseprot@list is passed via \edef so the literal text (not the macro
+%     name) is baked into the call before microtype reads it (header note #4).
+% [load=default]: INHERIT microtype's built-in protrusion (quotes, hyphens,
+% dashes, periods -- the hanging punctuation) and ADD the superscript-figure
+% codepoints on top.  Without load=, a global \SetProtrusion REPLACES the
+% font's whole protrusion vector, silently disabling all default hanging
+% punctuation across the edition.
+\edef\verseprot@do@protrusion{%
+  \noexpand\SetProtrusion
+    [ load = default ]%
+    { font = */*/*/*/* }%
+    {\verseprot@list}%
+}%
+\verseprot@do@protrusion
+
+% Adapted for LaTeXGen: called in scripture's font hook AFTER selecting
+% scripturefont. The sermon main font is intentionally a different family.
+\newif\ifverseprot@use
+\newcommand{\detectverseprotrusion}{%
+  \setbox0=\hbox{{\addfontfeature{VerticalPosition=Superior}0}}%
+  \setbox2=\hbox{0}%
+  \ifdim\wd0=\wd2
+    \verseprot@usefalse
+  \else
+    \ifverseprotrusion \verseprot@usetrue \else \verseprot@usefalse \fi
+  \fi
+}
+
+% --- The formatter wired into scripture's verse/format.
+\NewDocumentCommand\verseprotrudenum{m}{%
+  \ifverseprot@use
+    {\addfontfeature{VerticalPosition=Superior}#1}%
+  \else
+    \textsuperscript{#1}%
+  \fi
+}
+
+\makeatother

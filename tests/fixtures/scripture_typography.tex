@@ -1,0 +1,86 @@
+\documentclass[11pt]{article}
+\usepackage[margin=20mm]{geometry}
+\usepackage{fontspec}
+\usepackage[english]{babel}
+\setmainfont{Latin Modern Sans}
+\usepackage{xcolor}
+\usepackage[protrusion=true,expansion=true]{microtype}
+\usepackage{multicol}
+\usepackage{paracol}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{latexgen-scripture}
+\usepackage{latexgen-josefin}
+\listfiles
+\tolerance=123
+\emergencystretch=3em
+\newcount\headingreserves
+\let\savedNeedspace\Needspace
+\renewcommand{\Needspace}[1]{\global\advance\headingreserves by1\savedNeedspace{#1}}
+\begin{document}
+\section*{Scripture typography}
+{\josefin Tim Cochrell. \textbf{Bold} \textit{Italic} \textbf{\textit{Bold italic}}.}
+
+Serif scripture with a different sans serif body font. The heading, chapter
+drop cap and first verse must stay together.
+\begin{multicols}{2}
+\begin{scripture}[Genesis 1:1--5][version=KJV,book=Genesis]
+\ExplSyntaxOn
+\bool_if:NF \l__scripture_chap_drop_bool {\errmessage{Drop chapters not enabled}}
+\bool_if:NT \l__scripture_chap_para_bool {\errmessage{Paragraph chapters still enabled}}
+\ExplSyntaxOff
+\makeatletter
+\ifverseprot@use\else\errmessage{Scripture superior figures not active}\fi
+\makeatother
+\ifnum\tolerance=400\else\errmessage{Scripture tolerance not applied}\fi
+\heading{The Beginning}
+\ch{1}
+\vs{1}In the beginning God created the heaven and the earth.
+\vs{2}And the earth was without form, and void; and darkness was upon the
+face of the deep. And the Spirit of God moved upon the face of the waters.
+
+\vs{3}And God said, Let there be light: and there was light.
+\vs{4}And God saw the light, that it was good: and God divided the light
+from the darkness.
+\vs{5}And God called the light Day, and the darkness he called Night.
+And the evening and the morning were the first day.
+\end{scripture}
+\end{multicols}
+\ifnum\tolerance=123\else\errmessage{Scripture settings leaked into body}\fi
+
+\section*{Scripture beside notes}
+\columnratio{0.48}
+\begin{paracol}{2}
+\raggedright
+\begin{scripture}[Acts 27:44--28:2][version=KJV]
+\ch{27}
+\vs{44}And the rest, some on boards, and some on broken pieces of the ship.
+And so it came to pass, that they escaped all safe to land.
+\heading{Paul on Malta}
+\ch{28}
+\vs{1}And when they were escaped, then they knew that the island was called Melita.
+\vs{2}And the barbarous people shewed us no little kindness: for they kindled
+a fire, and received us every one, because of the present rain, and because of the cold.
+\end{scripture}
+\switchcolumn
+\raggedright
+Notes retain their own font and alignment. Chapter 28 belongs after the
+heading. Prose numbers such as 12 days remain ordinary text.
+\end{paracol}
+
+\section*{Poetry and divine names}
+\begin{scripture}[Psalm 23:1--3][version=KJV]
+\heading{A Psalm of David}
+\begin{poetry}
+\ch{23}
+\vs{1}The \name{Lord} is my shepherd;\\
+I shall not want.\\
+\vs{2}He maketh me to lie down in green pastures:\\
+he leadeth me beside the still waters.\\
+\vs{3}He restoreth my soul:\\
+he leadeth me in the paths of righteousness\\
+for his name's sake.
+\end{poetry}
+\end{scripture}
+\ifnum\headingreserves>2\else\errmessage{Heading space reservation never ran}\fi
+\end{document}

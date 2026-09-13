@@ -11,7 +11,7 @@ import httpx
 from .anthropic_config import (
     ANTHROPIC_API_VERSION,
     ANTHROPIC_MESSAGES_URL,
-    ANTHROPIC_SONNET_MODEL,
+    ANTHROPIC_MODEL,
 )
 from .config import get_settings
 from .commentary import (
@@ -42,6 +42,7 @@ PLACEHOLDER_PATTERN = re.compile(
     re.IGNORECASE
 )
 _re_open_dquote = re.compile(r'(?:(?<=[\s(])|^)"(?=\S)', re.MULTILINE)
+_re_verse_open_dquote = re.compile(r'(\\(?:vs|ch)\{\d+\}\s*)["\u201d](?=\S)')
 _re_open_squote = re.compile(r"(?:(?<=[\s(])|^)'(?=\S)", re.MULTILINE)
 _re_wrong_open_squote = re.compile(r'(?:(?<=[\s(])|^)\u2019(?=\S)', re.MULTILINE)
 
@@ -78,6 +79,9 @@ class ScripturePlaceholderError(Exception):
 
 def _smart_scripture_quotes(text: str) -> str:
     """Convert straight scripture quotes to Unicode curly quotes."""
+    # Verse spacing belongs to TeX, so AI output can put the opening quote
+    # directly after the marker. Also repair right quotes from older output.
+    text = _re_verse_open_dquote.sub(lambda m: m.group(1) + '\u201c', text)
     text = _re_open_dquote.sub('\u201c', text)
     text = text.replace('"', '\u201d')
     text = _re_open_squote.sub('\u2018', text)
@@ -257,8 +261,10 @@ def _format_scripture_body(
     - Converts verse numbers at line starts into \\vs{#}.
     - Handles NET Bible format with <b>chapter:verse</b> tags.
     """
+    is_html = bool(re.search(r"</?(?:p|h\d|span|b)\b", text, re.IGNORECASE))
+
     def _heading_tex(h: str) -> str:
-        return f"{{\\small\\textit{{{h}}}}}\n"
+        return f"\\heading{{{h}}}\n"
 
     def strip_heading_and_footnotes(raw: str) -> str:
         lines = raw.splitlines()
@@ -268,7 +274,7 @@ def _format_scripture_body(
             lines.pop(0)
 
         # Handle heading (first non-empty line without digits)
-        if lines and not re.search(r"\d", lines[0]):
+        if not is_html and lines and not re.search(r"\d", lines[0]):
             heading = lines.pop(0).strip()
             if include_headings and heading:
                 lines.insert(0, _heading_tex(heading))
@@ -298,6 +304,15 @@ def _format_scripture_body(
         return cleaned
 
     clean = strip_heading_and_footnotes(text)
+
+    # HTML paragraphs must survive tag stripping; otherwise NET verses from
+    # separate paragraphs are silently joined into one continuous paragraph.
+    clean = re.sub(r"</p\s*>\s*", "\n\n", clean, flags=re.IGNORECASE)
+    # NET starts each poetry line with <p class="poetry"> but often omits
+    # </p>. Keep those opening boundaries too, or adjacent words get joined.
+    clean = re.sub(r"<p\b[^>]*>", "\n", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"<br\b[^>]*>", "\n", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"\n{3,}", "\n\n", clean)
 
     # Remove NET footnote markers <n id="X" />
     clean = re.sub(r'<n\s+id="\d+"\s*/>', '', clean)
@@ -383,9 +398,6 @@ def _format_scripture_body(
     if include_verse_numbers:
         chapter_range = _extract_chapter_range(reference)
         converted = _insert_chapter_markers_at_verse_resets(converted, chapter_range)
-        chapter = str(chapter_range[0]) if chapter_range else _extract_chapter(reference)
-        if chapter:
-            converted = f"\\ch{{{chapter}}}\n" + converted
 
     # Handle NET section headings (<h3>, <h4>, etc.) before catch-all strip
     heading_tag_re = re.compile(r'<h\d[^>]*>(.*?)</h\d>', re.DOTALL | re.IGNORECASE)
@@ -402,7 +414,7 @@ def _format_scripture_body(
 
     # Format mid-passage ESV headings: isolated short paragraphs with no digits
     # or LaTeX commands (these survive as plain text when include-headings=true)
-    if include_headings:
+    if include_headings and not is_html:
         converted = re.sub(
             r'\n\n([A-Z][^0-9\\\n]{4,70})\n\n',
             lambda m: f'\n\n{_heading_tex(m.group(1).strip())}\n',
@@ -411,10 +423,18 @@ def _format_scripture_body(
 
     converted = _smart_scripture_quotes(converted)
 
+    if include_verse_numbers:
+        chapter = str(chapter_range[0]) if chapter_range else _extract_chapter(reference)
+        if chapter:
+            # Put the chapter after any opening heading, next to its first verse.
+            first_verse = converted.find(r"\vs{")
+            pos = first_verse if first_verse >= 0 else 0
+            converted = converted[:pos].rstrip() + ("\n" if pos else "") + f"\\ch{{{chapter}}}\n" + converted[pos:]
+
     # Clean up multiple spaces
     converted = re.sub(r'  +', ' ', converted)
 
-    return converted
+    return re.sub(r"(\\vs\{\d+\})\s+", r"\1", converted).strip()
 
 
 def _extract_strongs_word_map(html_text: str) -> list[tuple[str, str]]:
@@ -447,9 +467,18 @@ IMPORTANT RULES:
 - If no poetry is detected, return the text unchanged except for \\name{Lord} tags
 - Do NOT alter any punctuation, quotation marks, or non-structural characters — copy them byte-for-byte
 - Maintain exact spacing and line breaks
+- Keep all \\heading{...} commands OUTSIDE poetry environments; end poetry before a heading and restart it afterward if needed
 
 Scripture text:
 '''
+
+
+def _scripture_content_tokens(text: str) -> list[str]:
+    """Compare scripture words and numbers while ignoring formatting wrappers."""
+    text = re.sub(r"\\(?:begin|end)\{poetry\}", "", text)
+    text = re.sub(r"\\hyperlink\{strongs-\d+\}", "", text)
+    text = re.sub(r"\\[A-Za-z]+\*?", "", text)
+    return re.findall(r"\w+", text.casefold())
 
 
 async def _analyze_scripture_with_ai(
@@ -491,8 +520,9 @@ async def _analyze_scripture_with_ai(
         prompt = SCRIPTURE_ANALYSIS_PROMPT
 
     request_body = {
-        "model": ANTHROPIC_SONNET_MODEL,
-        "max_tokens": 4096,
+        "model": ANTHROPIC_MODEL,
+        "max_tokens": 8192,
+        "output_config": {"effort": "low"},
         "messages": [
             {
                 "role": "user",
@@ -513,7 +543,7 @@ async def _analyze_scripture_with_ai(
                 ANTHROPIC_MESSAGES_URL,
                 json=request_body,
                 headers=headers,
-                timeout=30.0
+                timeout=120.0
             )
             response.raise_for_status()
 
@@ -525,6 +555,9 @@ async def _analyze_scripture_with_ai(
                 if block.get("type") == "text":
                     result = block.get("text", "").strip()
                     if result:
+                        if _scripture_content_tokens(result) != _scripture_content_tokens(text):
+                            logger.warning("AI changed scripture words or numbers for %s; using original text", reference)
+                            return text
                         has_poetry = r"\begin{poetry}" in result
                         has_name = r"\name{" in result
                         logger.info("AI result for %s: poetry=%s, name_tags=%s", reference, has_poetry, has_name)
@@ -546,6 +579,48 @@ def _render_scripture(result_ref: str, version: ScriptureVersion, text: str) -> 
     reference_arg = result_ref.replace("[", "").replace("]", "")
     version_arg = f"[version={version.value}]" if version else ""
     body = text.strip()
+    # Reapply fixed verse gaps after AI formatting as well as deterministic
+    # conversion; the package owns the entire space after each verse number.
+    body = re.sub(r"(\\vs\{\d+\})\s+", r"\1", body)
+
+    # Native scripture headings are forbidden inside its poetry environment.
+    # Balance braces so nested formatting, multiline headings and following
+    # same-line verse commands retain their exact content and poetry membership.
+    def split_poetry_headings(match: Match[str]) -> str:
+        content = match.group(1)
+        parts = []
+        cursor = 0
+        for heading in re.finditer(r"\\heading\s*\{", content):
+            if heading.start() < cursor:
+                continue
+            depth = 1
+            end = None
+            for token in re.finditer(r"\\.|[{}]", content[heading.end():], re.DOTALL):
+                if token.group() == "{":
+                    depth += 1
+                elif token.group() == "}":
+                    depth -= 1
+                if depth == 0:
+                    end = heading.end() + token.end()
+                    break
+            if end is None:
+                return match.group(0)
+            parts.extend([(False, content[cursor:heading.start()]), (True, content[heading.start():end])])
+            cursor = end
+        if not parts:
+            return match.group(0)
+        parts.append((False, content[cursor:]))
+        return "\n".join(
+            part.strip() if is_heading else
+            "\\begin{poetry}\n" + part.strip() + "\n\\end{poetry}"
+            for is_heading, part in parts if part.strip()
+        )
+
+    body = re.sub(r"\\begin\{poetry\}(.*?)\\end\{poetry\}", split_poetry_headings, body, flags=re.DOTALL)
+
+    # A drop chapter must be in the same environment as its opening lines.
+    # Before poetry it becomes a detached number above the verse instead.
+    body = re.sub(r"(\\ch\{\d+\})\s*\\begin\{poetry\}", r"\\begin{poetry}\n\1", body)
 
     return (
         f"\\begin{{scripture}}[{reference_arg}]{version_arg}\n"

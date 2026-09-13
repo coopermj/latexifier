@@ -5,6 +5,11 @@ let prayerPdfBase64 = null;
 let extractedOutline = null;    // SermonOutline dict from /web/extract
 let extractedCandidates = null; // {source_key: {source_name, entries[]}} from /web/extract
 let pdfBlobUrl = null;          // stored server URL for opening PDF in a new tab
+let slidesPdfBase64 = null;
+let slideAnalysis = null;
+let slidesReading = false;
+let slideReadVersion = 0;
+let extractionVersion = 0;
 
 // ─── Wizard Navigation ────────────────────────────────────────────────────────
 function showStep(n) {
@@ -73,6 +78,7 @@ document.getElementById('logout-btn').addEventListener('click', async () => {
     clearImagePreview();
     clearBulletinPdf();
     clearPrayerPdf();
+    clearSlidesPdf();
     document.getElementById('extract-error').classList.add('hidden');
     showPasswordModal();
 });
@@ -85,6 +91,50 @@ function readFileAsBase64(file) {
         reader.onerror = reject;
         reader.readAsDataURL(file);
     });
+}
+
+// Sermon slides are analyzed during extraction and reviewed before generation.
+document.getElementById('slides-wrapper').addEventListener('click', (event) => {
+    if (event.target.id !== 'slides-pdf') document.getElementById('slides-pdf').click();
+});
+document.getElementById('slides-pdf').addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    const version = ++slideReadVersion;
+    slidesPdfBase64 = slideAnalysis = null;
+    document.getElementById('slide-review').innerHTML = '';
+    if (!file) { clearSlidesPdf(); return; }
+    if (file.size > 10 * 1024 * 1024 || !file.name.toLowerCase().endsWith('.pdf')) {
+        clearSlidesPdf();
+        showExtractError('Choose a PDF no larger than 10 MB for sermon slides.');
+        return;
+    }
+    slidesReading = true;
+    document.getElementById('slides-file-name').textContent = `Reading ${file.name}…`;
+    document.getElementById('clear-slides').classList.remove('hidden');
+    try {
+        const content = await readFileAsBase64(file);
+        if (version !== slideReadVersion) return;
+        slidesPdfBase64 = content;
+        document.getElementById('slides-file-name').textContent = file.name;
+    } catch (_) {
+        if (version !== slideReadVersion) return;
+        clearSlidesPdf();
+        showExtractError('The slides could not be read. Choose the PDF again.');
+    } finally {
+        if (version === slideReadVersion) slidesReading = false;
+    }
+});
+document.getElementById('clear-slides').addEventListener('click', clearSlidesPdf);
+function clearSlidesPdf() {
+    slideReadVersion++;
+    extractionVersion++;
+    slidesPdfBase64 = slideAnalysis = null;
+    slidesReading = false;
+    document.getElementById('slides-pdf').value = '';
+    document.getElementById('slides-file-name').textContent = 'No file chosen';
+    document.getElementById('clear-slides').classList.add('hidden');
+    document.getElementById('slide-review').innerHTML = '';
+    document.getElementById('slide-review').classList.add('hidden');
 }
 
 // Cover image
@@ -181,6 +231,9 @@ document.getElementById('sermon-form').addEventListener('submit', async (e) => {
 
     const notes = document.getElementById('notes').value.trim();
     if (!notes) { showExtractError('Please enter sermon notes'); return; }
+    if (slidesReading) { showExtractError('The slide PDF is still being read. Please wait a moment.'); return; }
+    const requestVersion = ++extractionVersion;
+    slideAnalysis = null;
 
     const commentaries = Array.from(
         document.querySelectorAll('#sermon-form input[type="checkbox"][id^="commentary-"]:checked')
@@ -192,20 +245,23 @@ document.getElementById('sermon-form').addEventListener('submit', async (e) => {
         const resp = await fetch('/web/extract', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ notes, image: coverImageBase64, commentaries }),
+            body: JSON.stringify({ notes, image: coverImageBase64, commentaries, slides_pdf: slidesPdfBase64 }),
             credentials: 'include',
         });
 
         if (resp.status === 401) { showPasswordModal(); return; }
 
         const data = await resp.json();
+        if (requestVersion !== extractionVersion) return;
 
         if (!data.success) { showExtractError(data.error || 'Extraction failed'); return; }
 
         extractedOutline    = data.outline;
         extractedCandidates = data.candidates;
+        slideAnalysis = data.slide_analysis || null;
 
         renderReviewStep(data.outline, data.candidates);
+        renderSlideReview(data.outline, data.slide_previews || {});
         showStep(2);
 
     } catch (_) {
@@ -217,8 +273,51 @@ document.getElementById('sermon-form').addEventListener('submit', async (e) => {
 
 function setExtracting(loading) {
     document.getElementById('extract-btn').disabled = loading;
-    document.getElementById('extract-btn-text').textContent = loading ? 'Extracting…' : 'Extract Outline';
+    document.getElementById('extract-btn-text').textContent = loading ? (slidesPdfBase64 ? 'Reading outline and slides…' : 'Extracting…') : 'Extract Outline';
     document.getElementById('extract-btn-spinner').classList.toggle('hidden', !loading);
+    document.querySelectorAll('#sermon-form input, #sermon-form textarea, #sermon-form button').forEach(el => { el.disabled = loading; });
+}
+
+function slideTargets(outline) {
+    const targets = [];
+    if (outline.foundational_principle) targets.push(['foundation', 'Main idea']);
+    (outline.points || []).forEach((point, pi) => {
+        if (point.sub_points?.length) {
+            point.sub_points.forEach((sub, si) => targets.push([`p${pi}.s${si}`, `${point.title || `Point ${pi + 1}`} — ${sub.label || si + 1}. ${sub.title || sub.content || 'Subpoint'}`]));
+        } else targets.push([`p${pi}`, point.title || `Point ${pi + 1}`]);
+    });
+    return targets;
+}
+
+function renderSlideReview(outline, previews) {
+    const panel = document.getElementById('slide-review');
+    panel.innerHTML = '';
+    panel.classList.toggle('hidden', !slideAnalysis);
+    if (!slideAnalysis) return;
+    const targets = slideTargets(outline);
+    const cards = slideAnalysis.items.map((item, index) => {
+        const options = targets.map(([key, label]) => `<option value="${escapeHtml(key)}" ${key === item.target ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('');
+        const preview = previews[`slide-${item.id}.png`];
+        return `<article class="slide-addition">
+            <label class="slide-toggle"><input type="checkbox" data-slide-index="${index}" ${item.enabled ? 'checked' : ''}>
+                <span><strong>${escapeHtml(item.reference || item.label)}</strong><small>Slide ${item.slide} · ${item.kind === 'scripture' ? 'Scripture pullout' : item.kind === 'table' ? 'Table' : 'Image'}</small></span>
+            </label>
+            ${preview ? `<img class="slide-preview" src="data:image/png;base64,${escapeHtml(preview)}" alt="${escapeHtml(item.label)}">` : ''}
+            <label class="slide-destination">Place with <select data-slide-target="${index}">${options}</select></label>
+        </article>`;
+    }).join('');
+    const unmatched = slideAnalysis.unmatched_slides || [];
+    panel.innerHTML = `<h3>Slide additions</h3><p class="slide-help">${slideAnalysis.page_count} slides reviewed. Choose additions and their matching outline sections. Repeated notes, main-passage verses and decorative artwork are skipped.</p>
+        ${cards || '<p>No additional passages, images or tables were matched.</p>'}
+        ${unmatched.length ? `<p class="slide-unmatched">Could not confidently match slides ${unmatched.join(', ')}. These slides will not be added.</p>` : ''}`;
+}
+
+function collectSlideAnalysis() {
+    if (!slideAnalysis) return null;
+    const reviewed = JSON.parse(JSON.stringify(slideAnalysis));
+    document.querySelectorAll('[data-slide-index]').forEach(el => { reviewed.items[Number(el.dataset.slideIndex)].enabled = el.checked; });
+    document.querySelectorAll('[data-slide-target]').forEach(el => { reviewed.items[Number(el.dataset.slideTarget)].target = el.value; });
+    return reviewed;
 }
 
 function showExtractError(msg) {
@@ -383,6 +482,8 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
             prayer_pdf: prayerPdfBase64,
             outline: collectEditedOutline(),
             commentary_overrides: commentaryOverrides,
+            slides_pdf: slidesPdfBase64,
+            slide_analysis: collectSlideAnalysis(),
         };
 
         const resp = await fetch('/web/generate', {
@@ -434,6 +535,7 @@ document.getElementById('start-over-btn').addEventListener('click', () => {
     pdfBlobUrl = null;
     document.getElementById('notes').value = '';
     clearImagePreview(); clearBulletinPdf(); clearPrayerPdf();
+    clearSlidesPdf();
     document.getElementById('outline-summary').innerHTML = '';
     document.getElementById('commentary-cards').innerHTML = '';
     document.getElementById('extract-error-message').textContent = '';

@@ -17,6 +17,11 @@ from ..llm import extract_sermon_outline_from_text, LLMError
 from ..models import SermonOutline
 from ..sermon_latex import generate_sermon_latex
 from ..storage import save_pdf
+from ..tex_assets import copy_bundled_tex_assets
+from ..slides import (
+    SlideAnalysis, SlideError, analyze_slides, build_slide_assets,
+    decode_slide_pdf, validate_analysis,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +85,7 @@ class ExtractRequest(BaseModel):
     notes: str
     image: str | None = None
     commentaries: list[str] = []
+    slides_pdf: str | None = None
 
 
 class ExtractResponse(BaseModel):
@@ -87,6 +93,8 @@ class ExtractResponse(BaseModel):
     outline: SermonOutline | None = None
     candidates: dict[str, ExtractCandidateSource] = {}
     error: str | None = None
+    slide_analysis: SlideAnalysis | None = None
+    slide_previews: dict[str, str] = {}
 
 
 # Aliases for semantic clarity in each context
@@ -102,6 +110,8 @@ class GenerateRequest(BaseModel):
     prayer_pdf: str | None = None  # Base64 encoded prayer requests PDF
     outline: SermonOutline | None = None            # pre-extracted outline (skips LLM if provided)
     commentary_overrides: list[SelectedCommentaryResult] = []  # user-selected commentary entries
+    slides_pdf: str | None = None
+    slide_analysis: SlideAnalysis | None = None
 
 
 class GenerateResponse(BaseModel):
@@ -179,7 +189,16 @@ async def extract_sermon(
         return ExtractResponse(success=False, error="No sermon notes provided")
 
     try:
+        # Validate the optional upload before spending on outline extraction.
+        slides_data = decode_slide_pdf(request.slides_pdf) if request.slides_pdf else None
         outline = await extract_sermon_outline_from_text(request.notes)
+        slide_analysis = await analyze_slides(slides_data, outline) if slides_data else None
+        slide_previews = {
+            name: base64.b64encode(content).decode("ascii")
+            for name, content in build_slide_assets(slides_data, slide_analysis).items()
+        } if slide_analysis is not None else {}
+    except SlideError as exc:
+        return ExtractResponse(success=False, error=str(exc))
     except LLMError as exc:
         logger.error("LLM extraction failed: %s", exc)
         return ExtractResponse(success=False, error=str(exc))
@@ -212,6 +231,8 @@ async def extract_sermon(
         success=True,
         outline=outline,
         candidates=candidates,
+        slide_analysis=slide_analysis,
+        slide_previews=slide_previews,
     )
 
 
@@ -232,6 +253,13 @@ async def generate_sermon_pdf(
     if not request.notes or not request.notes.strip():
         return GenerateResponse(success=False, error="No sermon notes provided")
 
+    try:
+        slides_data = decode_slide_pdf(request.slides_pdf) if request.slides_pdf else None
+        if request.slide_analysis is not None and slides_data is None:
+            raise SlideError("The reviewed slide additions require the original slide PDF. Upload it again.")
+    except SlideError as exc:
+        return GenerateResponse(success=False, error=str(exc))
+
     # Use pre-extracted outline if provided, otherwise extract via LLM
     if request.outline:
         outline = request.outline
@@ -244,6 +272,19 @@ async def generate_sermon_pdf(
         except Exception as exc:
             logger.exception("Unexpected error during extraction")
             return GenerateResponse(success=False, error=f"Failed to parse notes: {exc}")
+
+    slide_analysis = None
+    slide_assets = {}
+    if slides_data is not None:
+        try:
+            slide_analysis = (
+                validate_analysis(request.slide_analysis, slides_data, outline)
+                if request.slide_analysis is not None
+                else await analyze_slides(slides_data, outline)
+            )
+            slide_assets = build_slide_assets(slides_data, slide_analysis)
+        except SlideError as exc:
+            return GenerateResponse(success=False, error=str(exc))
 
     # Handle cover image if provided
     cover_image_filename = None
@@ -328,7 +369,8 @@ async def generate_sermon_pdf(
             commentary_sources=request.commentaries if not preloaded_commentary else [],
             commentary_overrides=preloaded_commentary,
             include_bulletin=bulletin_data is not None,
-            include_prayer_requests=prayer_data is not None
+            include_prayer_requests=prayer_data is not None,
+            **({"slide_analysis": slide_analysis} if slide_analysis is not None else {}),
         )
     except Exception as exc:
         logger.exception("LaTeX generation failed")
@@ -337,7 +379,7 @@ async def generate_sermon_pdf(
     # Compile to PDF
     try:
         # Build supplementary files dict
-        supplementary_pdfs = {}
+        supplementary_pdfs = dict(slide_assets)
         if bulletin_data:
             supplementary_pdfs["bulletin.pdf"] = bulletin_data
         if prayer_data:
@@ -361,9 +403,28 @@ async def generate_sermon_pdf(
                 supplementary_pdfs=supplementary_pdfs
             )
 
+        # Legacy placeholders tolerate missing text; reviewed slide pullouts must
+        # contain their requested Scripture before we publish a successful PDF.
+        if slide_analysis:
+            failed_refs = [
+                item.reference for item in slide_analysis.items
+                if item.enabled and item.kind == "scripture" and any(
+                    marker in processed_tex for marker in (
+                        f"% [scripture not found: {item.reference}]",
+                        f"% [scripture error: {item.reference}]",
+                        f"[[scripture:{item.reference}|",
+                    )
+                )
+            ]
+            if failed_refs:
+                return GenerateResponse(success=False, error=(
+                    "Could not retrieve supporting Scripture from the slides: "
+                    + ", ".join(failed_refs) + ". Please retry generation."
+                ))
+
         # Save PDF and tex, get URLs
         # Use sermon title as filename (sanitize for filesystem)
-        safe_title = "".join(c for c in outline.metadata.title if c.isalnum() or c in " -_").strip()
+        safe_title = "".join(c for c in (outline.metadata.title or "") if c.isalnum() or c in " -_").strip()
         filename = f"{safe_title}.pdf" if safe_title else "sermon.pdf"
         pdf_id = await save_pdf(pdf_bytes, filename, tex_content=processed_tex)
         download_url = f"/download/{pdf_id}/{filename}"
@@ -432,6 +493,8 @@ async def _compile_without_image(
             for filename, pdf_data in supplementary_pdfs.items():
                 pdf_path = work_dir / filename
                 pdf_path.write_bytes(pdf_data)
+
+        copy_bundled_tex_assets(work_dir)
 
         # Process scripture placeholders
         await process_scripture_placeholders(work_dir, "sermon.tex")
@@ -528,6 +591,8 @@ async def _compile_with_image(
             for filename, pdf_data in supplementary_pdfs.items():
                 pdf_path = work_dir / filename
                 pdf_path.write_bytes(pdf_data)
+
+        copy_bundled_tex_assets(work_dir)
 
         # Process scripture placeholders
         await process_scripture_placeholders(work_dir, "sermon.tex")

@@ -745,3 +745,14 @@ input[type="file"] {
     pointer-events: none;
 }
 #generate-btn:disabled { background: #999; cursor: not-allowed; }
+/* Optional sermon-slide review */
+.slide-review { margin: 1.5rem 0; }
+.slide-help { color: var(--text-muted, #64748b); font-size: 0.85rem; line-height: 1.5; margin-top: 0.5rem; }
+.slide-addition { border: 1px solid #d7dce3; border-radius: 8px; padding: 1rem; margin: 0.75rem 0; }
+.slide-toggle { display: flex; gap: 0.65rem; align-items: flex-start; cursor: pointer; }
+.slide-toggle input { margin-top: 0.3rem; flex: 0 0 auto; }
+.slide-toggle small { display: block; margin-top: 0.25rem; font-size: 0.8rem; color: #64748b; }
+.slide-preview { display: block; max-width: 100%; max-height: 240px; margin: 1rem auto; object-fit: contain; }
+.slide-destination { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; font-size: 0.85rem; }
+.slide-destination select { flex: 1 1 240px; min-width: 0; max-width: 100%; padding: 0.55rem; border: 1px solid #cbd5e1; border-radius: 4px; background: white; color: #263442; }
+.slide-unmatched { padding: 0.75rem; border-left: 3px solid #bf8a2e; background: #fff9ed; font-size: 0.85rem; }

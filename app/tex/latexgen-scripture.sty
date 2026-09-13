@@ -1,0 +1,53 @@
+% Scripture typography adapted from geneve_1564, cf87dfd.
+\NeedsTeXFormat{LaTeX2e}[2022-11-01]
+\ProvidesPackage{latexgen-scripture}[2026/09/13 Geneva scripture typography]
+\RequirePackage{fontspec}
+\RequirePackage{scripture}[2026-08-23]
+\RequirePackage{microtype}
+\RequirePackage{needspace}
+
+\newfontfamily\scripturefont[
+  Path=./,
+  Extension=.otf,
+  UprightFont=EBGaramond-Regular,
+  ItalicFont=EBGaramond-Italic,
+  BoldFont=EBGaramond-Bold,
+  BoldItalicFont=EBGaramond-BoldItalic,
+  Numbers=OldStyle,
+  RawFeature={+dlig},
+]{EB Garamond}
+\input{verse_protrusion.tex}
+\input{biblical-hyphenation.tex}
+
+% Assignments execute within the scripture environment's group.
+\newcommand{\scripturetypography}{%
+  \scripturefont
+  \detectverseprotrusion
+  \tolerance=400
+  \emergencystretch=1em
+  \doublehyphendemerits=7500
+  \finalhyphendemerits=7500
+  % Scripture defines its public heading command before executing this font
+  % hook. Wrap it locally; v2.5 has no scripture/heading/before hook.
+  \let\latexgenoriginalheading\heading
+  \renewcommand{\heading}[1]{%
+    \Needspace{5\baselineskip}%
+    \latexgenoriginalheading{##1}%
+  }%
+}
+\scripturesetup{
+  font=\scripturetypography,
+  chapter/drop=true,
+  chapter/para=false,
+  chapter/font=\bfseries\addfontfeatures{Numbers=Lining},
+  chapter/format=#1,
+  verse/format=\verseprotrudenum{#1},
+  verse/sep=0.3em,
+  poetry/verse/sep=0.3em,
+  poetry/aboveskip=\baselineskip,
+  poetry/belowskip=\baselineskip,
+  poetry/bigindent=2em,
+  heading/aboveskip=\baselineskip,
+  heading/belowskip=0pt,
+  redletter/colour=red!68!black,
+}

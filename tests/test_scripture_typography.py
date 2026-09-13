@@ -1,0 +1,165 @@
+import re
+import shutil
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
+from app.placeholders import _format_scripture_body, _render_scripture
+from app.scripture import ScriptureVersion
+
+
+@pytest.mark.parametrize("source", [
+    "[2] And God said.",
+    "2 And God said.",
+    "<b>1:2</b> And God said.",
+    '<span class="vref"><b><span class="verseNumber">2</span></b></span> And God said.',
+])
+def test_verse_gap_is_controlled_by_scripture_package(source):
+    formatted = _format_scripture_body("Genesis 1:2", source, True, False)
+    assert r"\vs{2}And God said." in formatted
+
+
+def test_final_render_removes_ai_added_verse_spaces_without_joining_paragraphs():
+    rendered = _render_scripture(
+        "Genesis 1:2-3", ScriptureVersion.ESV,
+        "\\vs{2}  And God said.\n\n\\vs{3}\nAnd it was so.",
+    )
+    assert "\\vs{2}And God said.\n\n\\vs{3}And it was so." in rendered
+
+
+def test_net_paragraphs_and_heading_before_chapter_survive_formatting():
+    source = '<h3>The Beginning</h3><p><b>1:1</b>In the beginning.</p><p><b>2</b>The earth.</p>'
+    formatted = _format_scripture_body("Genesis 1:1-2", source, True, False)
+    assert formatted.startswith("\\heading{The Beginning}\n\\ch{1}\n")
+    assert "beginning.\n\n\\vs{2}The earth." in formatted
+    assert not re.search(r"\\vs\{\d+\}[ \t\n]", formatted)
+
+
+def test_net_continuation_paragraph_is_not_promoted_to_heading():
+    source = '<p><b>1:1</b>In the beginning.</p><p>And the evening and the morning were the first day.</p><p><b>2</b>The earth.</p>'
+    formatted = _format_scripture_body("Genesis 1:1-2", source, True, False)
+    assert r"\heading" not in formatted
+    assert "\n\nAnd the evening and the morning were the first day.\n\n" in formatted
+
+
+@pytest.mark.parametrize("entrypoint", ["api", "web", "web_image"])
+async def test_compilers_use_bundled_typography_ahead_of_stale_storage(tmp_path, monkeypatch, entrypoint):
+    from app import compiler
+    from app.routes import web
+    from app.models import CompileRequest
+
+    styles = tmp_path / "styles"
+    styles.mkdir()
+    (styles / "scripture.sty").write_text("stale package")
+    settings = SimpleNamespace(storage_path=str(tmp_path))
+    monkeypatch.setattr(compiler, "get_settings", lambda: settings)
+    monkeypatch.setattr("app.config.get_settings", lambda: settings)
+    seen = []
+
+    async def fake_exec(*args, cwd, **kwargs):
+        cwd = Path(cwd)
+        assert r"\ProvidesExplPackage{scripture}{2026-08-23}{2.5}" in (cwd / "scripture.sty").read_text()
+        assert (cwd / "latexgen-scripture.sty").is_file()
+        assert (cwd / "EBGaramond-Regular.otf").is_file()
+        seen.append(cwd)
+        (cwd / Path(args[-1]).with_suffix(".pdf")).write_bytes(b"%PDF-test")
+        return SimpleNamespace(returncode=0, communicate=AsyncMock(return_value=(b"ok", None)))
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+    tex = r"\documentclass{article}\begin{document}Test\end{document}"
+    if entrypoint == "api":
+        await compiler.compile_latex(CompileRequest(content=tex))
+    elif entrypoint == "web":
+        await web._compile_without_image(tex)
+    else:
+        await web._compile_with_image(tex, "cover.png", b"image")
+    assert len(seen) == 2
+    assert all(not cwd.exists() for cwd in seen)
+
+
+def test_ai_poetry_wrapping_keeps_native_headings_outside_poetry():
+    body = "\\begin{poetry}\n\\vs{1}First line.\n\\heading{A {new} section}\n\\vs{2}Second line.\n\\end{poetry}"
+    rendered = _render_scripture("Psalm 1:1-2", ScriptureVersion.ESV, body)
+    assert "\\end{poetry}\n\\heading{A {new} section}\n\\begin{poetry}" in rendered
+    assert rendered.count(r"\begin{poetry}") == 2
+
+
+def test_drop_chapter_moves_inside_opening_poetry():
+    body = "\\heading{A Psalm}\n\\ch{23}\n\\begin{poetry}\n\\vs{1}The Lord is my shepherd.\n\\end{poetry}"
+    rendered = _render_scripture("Psalm 23:1", ScriptureVersion.ESV, body)
+    assert "\\heading{A Psalm}\n\\begin{poetry}\n\\ch{23}\n\\vs{1}" in rendered
+
+
+@pytest.mark.parametrize("heading", ["Title", "A {new} section", "A multiline\nheading"])
+def test_poetry_repair_preserves_commands_after_balanced_heading(heading):
+    body = r"\begin{poetry}\vs{1}Before.\heading{" + heading + r"}\vs{2}After.\end{poetry}"
+    rendered = _render_scripture("Psalm 1:1-2", ScriptureVersion.ESV, body)
+    assert "\\heading{" + heading + "}\n\\begin{poetry}\n\\vs{2}After." in rendered
+
+
+@pytest.mark.skipif(not shutil.which("lualatex"), reason="LuaLaTeX is required for rendered integration checks")
+@pytest.mark.parametrize("entrypoint", ["api", "web", "web_image"])
+async def test_real_lualatex_typography_in_all_compilation_paths(entrypoint):
+    from app.compiler import compile_latex
+    from app.routes.web import _compile_without_image, _compile_with_image
+    from app.models import CompileRequest, TexEngine
+    import base64
+
+    tex = (Path(__file__).parent / "fixtures" / "scripture_typography.tex").read_text()
+    if entrypoint == "api":
+        pdf, log = await compile_latex(CompileRequest(content=tex, engine=TexEngine.LUALATEX))
+    elif entrypoint == "web":
+        pdf, log, processed = await _compile_without_image(tex)
+        assert processed == tex
+    else:
+        tex = tex.replace(r"\end{document}", r"\includegraphics[width=1mm]{cover.png}\end{document}")
+        png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNoaGgAAAMEAYFL09IQAAAAAElFTkSuQmCC")
+        pdf, log, processed = await _compile_with_image(tex, "cover.png", png)
+        assert processed == tex
+    assert pdf.startswith(b"%PDF-")
+    assert re.search(r"scripture\.sty\s+2026-08-23 v2\.5", log)
+    assert "EBGaramond-Regular.otf" in log
+    assert "JosefinSans-Regular.otf" in log
+    assert "JosefinSans-Bold.otf" in log
+    assert "JosefinSans-Italic.otf" in log
+    assert "JosefinSans-BoldItalic.otf" in log
+    assert "Overfull" not in log
+    assert "Missing character" not in log
+
+
+def test_net_implicitly_closed_poetry_paragraphs_keep_word_boundaries():
+    source = '<p class="poetry"><b>1:2</b>Listen, O heavens,<p class="poetry">pay attention, O earth!</p><p class="poetry"><b>3</b>An ox knows<p class="poetry">its owner.</p>'
+    formatted = _format_scripture_body('Isaiah 1:2-3', source, True, False)
+    assert 'heavens,\npay attention' in formatted
+    assert 'knows\nits owner.' in formatted
+    assert '\\vs{3}An ox' in formatted
+
+
+def test_html_line_breaks_keep_word_boundaries():
+    formatted = _format_scripture_body('Isaiah 1:2', '<p><b>1:2</b>Listen,<br />O heavens,<BR>pay attention.</p>', True, False)
+    assert 'Listen,\nO heavens,\npay attention.' in formatted
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('result,accepted', [
+    (r'\begin{poetry}\vs{2}For \name{Lord} speaks.\end{poetry}', False),
+    (r'\begin{poetry}\vs{3}For the \name{Lord} speaks.\end{poetry}', False),
+    (r'\begin{poetry}\vs{2}For the \name{Lord} speaks.\end{poetry}', True),
+    (r'\begin{poetry}\vs{2}For the \name{Lord} \hyperlink{strongs-3004}{speaks}.\end{poetry}', True),
+])
+async def test_scripture_ai_formatting_cannot_change_words_or_verse_numbers(monkeypatch, result, accepted):
+    from app import placeholders
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    original = r'\vs{2}For the LORD speaks.'
+    monkeypatch.setattr(placeholders, 'get_settings', lambda: SimpleNamespace(anthropic_api_key='test-only'))
+    response = MagicMock()
+    response.json.return_value = {'content': [{'type': 'text', 'text': result}]}
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.post.return_value = response
+    monkeypatch.setattr(placeholders.httpx, 'AsyncClient', lambda: client)
+    actual = await placeholders._analyze_scripture_with_ai(original, 'Isaiah 1:2')
+    assert actual == (result if accepted else original)

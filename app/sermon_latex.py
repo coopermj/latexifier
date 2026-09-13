@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from .models import SermonOutline, SermonPoint, SermonSubPoint, Table
+from .slides import SlideAnalysis, SlideItem, asset_name
 from .commentary import CommentarySource, fetch_commentary_for_reference, CommentaryResult
 from .scripture import fetch_scripture, ScriptureVersion, ScriptureLookupOptions
 from .lsj import get_lsj_entry
@@ -329,7 +330,8 @@ async def generate_sermon_latex(
     commentary_sources: list[str] | None = None,
     commentary_overrides: list[CommentaryResult] | None = None,
     include_bulletin: bool = False,
-    include_prayer_requests: bool = False
+    include_prayer_requests: bool = False,
+    slide_analysis: SlideAnalysis | None = None,
 ) -> str:
     """
     Generate LaTeX document from sermon outline.
@@ -356,6 +358,11 @@ async def generate_sermon_latex(
     speaker = escape_latex(outline.metadata.speaker or "")
     date = format_date(outline.metadata.date)
     main_passage = outline.main_passage
+    slide_items: dict[str, list[SlideItem]] = {}
+    if slide_analysis:
+        for item in slide_analysis.items:
+            if item.enabled:
+                slide_items.setdefault(item.target, []).append(item)
 
     # Preamble
     lines.append(r"""\documentclass[
@@ -389,6 +396,7 @@ async def generate_sermon_latex(
 
 % Fonts + heading styling
 \usepackage{fontspec}
+\usepackage[english]{babel}
 \usepackage{sectsty}
 \usepackage{titlesec}
 
@@ -475,11 +483,12 @@ async def generate_sermon_latex(
   BoldItalicFont = 37151.otf,
   Ligatures = TeX
 ]
-% Serif font for scripture quotations (Computer Modern Roman)
-\newfontfamily\scripturefont{Latin Modern Roman}
+% Geneva scripture typography, with pinned package and font assets.
+\usepackage{latexgen-scripture}
 \newfontfamily\wordstudy{Times New Roman}
 \newfontfamily\greekfont{Times New Roman}
-\newfontfamily\josefin{Josefin Sans}
+\usepackage{latexgen-josefin}
+\usepackage{latexgen-snell}
 \newfontfamily\commentaryfont{FreightSans-Book}[
   Path = ./,
   Extension = .otf,
@@ -515,7 +524,7 @@ async def generate_sermon_latex(
   \begin{flushleft}
     {\josefin{\huge\textbf{\@title}}}\vspace{0.3cm}\newline
     {\josefin{\Large \@subtitle}}\newline
-    {\josefin\@author}\newline
+    {\authorfont\@author}\newline
     {\josefin\@date}%
   \end{flushleft}%
   \egroup
@@ -621,6 +630,8 @@ async def generate_sermon_latex(
             lines.append(scripture_placeholder(outline.foundational_scripture, scripture_version))
             lines.append("")
 
+        lines.extend(_render_slide_visuals(slide_items.get("foundation", [])))
+        lines.extend(_render_slide_scriptures(slide_items.get("foundation", []), subpoint_version))
         lines.append(r"\vspace{2.2in}")
         lines.append("")
 
@@ -669,7 +680,7 @@ async def generate_sermon_latex(
         p_links = note_page_links.get((-1, pi))
         lines.extend(_render_point(point, subpoint_version, point_idx=pi,
                                    subpoint_links=subpoint_links or None,
-                                   point_links=p_links))
+                                   point_links=p_links, slide_items=slide_items))
 
     # Render any top-level tables not associated with a specific point
     if outline.tables:
@@ -705,12 +716,47 @@ async def generate_sermon_latex(
     return "\n".join(lines)
 
 
+def _render_slide_visuals(items: list[SlideItem]) -> list[str]:
+    """Place faithful source crops at the start of the matching note page."""
+    lines = []
+    for item in items:
+        if not item.enabled or item.kind not in ("image", "table"):
+            continue
+        lines.extend([
+            r"\begin{center}",
+            rf"\includegraphics[width=\linewidth,height=0.27\textheight,keepaspectratio]{{{asset_name(item)}}}",
+            r"\par\smallskip",
+            rf"{{\footnotesize {escape_latex(item.label)} \textperiodcentered\ Slide {item.slide}}}",
+            r"\end{center}",
+        ])
+    return lines
+
+
+def _render_slide_scriptures(items: list[SlideItem], version: str) -> list[str]:
+    """Inset Scripture pullouts in the notes column, with source provenance."""
+    lines = []
+    for item in items:
+        if not item.enabled or item.kind != "scripture" or not item.reference:
+            continue
+        lines.extend([
+            r"\par\medskip\begingroup\small\setlength{\parfillskip}{0pt plus 1fil}",
+            r"\noindent{\color{highlight}\rule{\linewidth}{0.7pt}}\par\nobreak",
+            rf"{{\josefin\bfseries\color{{highlight}} {escape_latex(item.reference)}}}",
+            rf"\hfill{{\footnotesize Slide {item.slide}}}\par\nobreak\smallskip",
+            scripture_placeholder(item.reference, version, nolinks=True),
+            r"\par\nobreak\noindent{\color{highlight}\rule{\linewidth}{0.4pt}}",
+            r"\par\endgroup\medskip",
+        ])
+    return lines
+
+
 def _render_point(
     point: SermonPoint,
     version: str,
     point_idx: int = 0,
     subpoint_links: dict[int, list[tuple[str, str]]] | None = None,
     point_links: list[tuple[str, str]] | None = None,
+    slide_items: dict[str, list[SlideItem]] | None = None,
 ) -> list[str]:
     """Render a main sermon point as a section."""
     lines = []
@@ -721,7 +767,9 @@ def _render_point(
             anchor = f"note-p{point_idx}-s{si}"
             links = (subpoint_links or {}).get(si)
             lines.extend(_render_subpoint(sub, version, section_title,
-                                          note_anchor=anchor, commentary_links=links))
+                                          note_anchor=anchor, commentary_links=links,
+                                          section_intro=point.content if si == 0 else None,
+                                          slide_items=(slide_items or {}).get(f"p{point_idx}.s{si}", [])))
         # Render any tables within this point after the sub-points
         if point.tables:
             for table in point.tables:
@@ -732,6 +780,8 @@ def _render_point(
         lines.append(rf"\hypertarget{{note-p{point_idx}}}{{}}")
         lines.append(rf"\section{{{section_title}}}")
         lines.append("")
+        additions = (slide_items or {}).get(f"p{point_idx}", [])
+        lines.extend(_render_slide_visuals(additions))
 
         # Build notes content
         note_lines = []
@@ -759,6 +809,8 @@ def _render_point(
                 else:
                     note_lines.append(rf"\item {escape_latex(item)}")
             note_lines.append(r"\end{enumerate}")
+
+        note_lines.extend(_render_slide_scriptures(additions, version))
 
         if point.scripture_refs:
             # Two-column layout: scripture on left, notes on right
@@ -811,6 +863,8 @@ def _render_subpoint(
     section_title: str = "",
     note_anchor: str = "",
     commentary_links: list[tuple[str, str]] | None = None,
+    section_intro: str | None = None,
+    slide_items: list[SlideItem] | None = None,
 ) -> list[str]:
     """Render a sub-point - two-column if has scripture refs, full-width otherwise."""
     lines = []
@@ -823,11 +877,16 @@ def _render_subpoint(
         lines.append(rf"\section{{{section_title}}}")
         lines.append("")
 
+    if section_intro:
+        lines.append(escape_latex(section_intro))
+        lines.append("")
+
     sub_title = escape_latex(sub.title) if sub.title else ""
     if sub.label:
         sub_title = f"{sub.label}. {sub_title}"
     lines.append(rf"\subsection{{{sub_title}}}")
     lines.append("")
+    lines.extend(_render_slide_visuals(slide_items or []))
 
     # Check if this sub-point has scripture references
     has_scripture = sub.scripture_verse or sub.scripture_refs
@@ -860,6 +919,7 @@ def _render_subpoint(
                 note_lines.append(rf"\item {escape_latex(bullet)}")
             note_lines.append(r"\end{itemize}")
 
+        note_lines.extend(_render_slide_scriptures(slide_items or [], version))
         note_lines.append(r"\vspace{2in}")
         notes_content = "\n".join(note_lines)
 
@@ -883,6 +943,9 @@ def _render_subpoint(
             for bullet in sub.bullets:
                 lines.append(rf"\item {escape_latex(bullet)}")
             lines.append(r"\end{itemize}")
+
+    if not has_scripture:
+        lines.extend(_render_slide_scriptures(slide_items or [], version))
 
     if commentary_links:
         lines.append(r"\vfill")
