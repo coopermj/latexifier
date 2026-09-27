@@ -123,6 +123,15 @@ Return ONLY valid JSON matching this exact structure:
 }'''
 
 
+PDF_LAYOUT_GUIDANCE = '''PDF LAYOUT NOTES (this input is a PDF, not pasted text):
+- Pages may use two or more text columns. Read each column top to bottom before moving to the next column, and keep content that continues across a column or page break together in the right point.
+- Tables in a PDF are visual grids or aligned columns, NOT pipe-delimited text. Treat any grid, chart, or side-by-side comparison (e.g., "Pride" vs "Humility" columns) as a table: headers are the column titles, and each visual row is one row. Cells that wrap onto several lines are ONE cell — join the wrapped lines with a space.
+- Keep every row and cell of a table in its original order; do not summarize, drop, or merge rows.
+- Put a table in the "tables" field of the point it belongs to (the point it appears under or directly illustrates). If it stands alone (e.g., on its own page with no heading tying it to a point), put it in the top-level "tables" array.
+- Ordinary numbered or lettered lists and question lists are NOT tables, even when they are aligned.
+- Ignore page headers/footers, page numbers, and blank fill-in lines.'''
+
+
 class LLMError(Exception):
     """Raised when LLM API call fails."""
     def __init__(self, message: str, status_code: int = 500):
@@ -303,12 +312,25 @@ async def _assign_missing_verse_refs(outline: SermonOutline) -> SermonOutline:
         return outline
 
 
-async def extract_sermon_outline(pdf_bytes: bytes) -> SermonOutline:
+def _pdf_prompt(notes: str | None) -> str:
+    """Build the extraction prompt for a PDF, with optional pasted notes as context."""
+    parts = [SERMON_EXTRACTION_PROMPT_BASE, PDF_LAYOUT_GUIDANCE]
+    if notes and notes.strip():
+        parts.append(
+            "SUPPLEMENTARY NOTES: The pastor also pasted the text below. The PDF is the "
+            "primary source for structure and tables; use these notes only to fill in or "
+            f"clarify content.\n\n{notes.strip()}"
+        )
+    return "\n\n".join(parts)
+
+
+async def extract_sermon_outline(pdf_bytes: bytes, notes: str | None = None) -> SermonOutline:
     """
     Use Claude API to extract structured sermon outline from PDF.
 
     Args:
         pdf_bytes: Raw PDF file bytes
+        notes: Optional pasted notes to use as supplementary context
 
     Returns:
         SermonOutline with extracted content
@@ -331,7 +353,7 @@ async def extract_sermon_outline(pdf_bytes: bytes) -> SermonOutline:
     # Build the API request
     request_body = {
         "model": ANTHROPIC_MODEL,
-        "max_tokens": 8192,
+        "max_tokens": 16384,
         "output_config": {"effort": "medium"},
         "messages": [
             {
@@ -347,7 +369,7 @@ async def extract_sermon_outline(pdf_bytes: bytes) -> SermonOutline:
                     },
                     {
                         "type": "text",
-                        "text": SERMON_EXTRACTION_PROMPT_BASE
+                        "text": _pdf_prompt(notes)
                     }
                 ]
             }

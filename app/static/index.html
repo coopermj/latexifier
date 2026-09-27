@@ -40,7 +40,17 @@
             <form id="sermon-form">
                 <div class="form-group">
                     <label for="notes">Sermon Notes</label>
-                    <textarea id="notes" placeholder="Paste your sermon notes here..." required></textarea>
+                    <textarea id="notes" placeholder="Paste your sermon notes here, or upload them as a PDF below..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="notes-pdf">Sermon Notes PDF (optional)</label>
+                    <div class="file-input-wrapper" id="notes-pdf-wrapper">
+                        <input type="file" id="notes-pdf" accept="application/pdf,.pdf">
+                        <span id="notes-pdf-file-name">No file chosen</span>
+                    </div>
+                    <button type="button" id="clear-notes-pdf" class="clear-btn hidden">Remove</button>
+                    <p class="slide-help">Upload your notes instead of pasting them. Multi-column layouts and tables are read from the PDF and tables appear in the output. Any pasted text is used as extra context. Up to 10 MB.</p>
                 </div>
 
                 <div class="form-group">

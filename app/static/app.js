@@ -1,6 +1,8 @@
 // ─── State ────────────────────────────────────────────────────────────────────
 let coverImageBase64 = null;
 let bulletinPdfBase64 = null;
+let notesPdfBase64 = null;
+let notesPdfReading = false;
 let prayerPdfBase64 = null;
 let extractedOutline = null;    // SermonOutline dict from /web/extract
 let extractedCandidates = null; // {source_key: {source_name, entries[]}} from /web/extract
@@ -79,6 +81,7 @@ document.getElementById('logout-btn').addEventListener('click', async () => {
     clearBulletinPdf();
     clearPrayerPdf();
     clearSlidesPdf();
+    clearNotesPdf();
     document.getElementById('extract-error').classList.add('hidden');
     showPasswordModal();
 });
@@ -91,6 +94,41 @@ function readFileAsBase64(file) {
         reader.onerror = reject;
         reader.readAsDataURL(file);
     });
+}
+
+// Sermon notes PDF: an alternative to pasting notes. Read during extraction only.
+document.getElementById('notes-pdf-wrapper').addEventListener('click', (event) => {
+    if (event.target.id !== 'notes-pdf') document.getElementById('notes-pdf').click();
+});
+document.getElementById('notes-pdf').addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    notesPdfBase64 = null;
+    if (!file) { clearNotesPdf(); return; }
+    if (file.size > 10 * 1024 * 1024 || !file.name.toLowerCase().endsWith('.pdf')) {
+        clearNotesPdf();
+        showExtractError('Choose a PDF no larger than 10 MB for sermon notes.');
+        return;
+    }
+    notesPdfReading = true;
+    document.getElementById('notes-pdf-file-name').textContent = `Reading ${file.name}…`;
+    document.getElementById('clear-notes-pdf').classList.remove('hidden');
+    try {
+        notesPdfBase64 = await readFileAsBase64(file);
+        document.getElementById('notes-pdf-file-name').textContent = file.name;
+    } catch (_) {
+        clearNotesPdf();
+        showExtractError('The notes PDF could not be read. Choose it again.');
+    } finally {
+        notesPdfReading = false;
+    }
+});
+document.getElementById('clear-notes-pdf').addEventListener('click', clearNotesPdf);
+function clearNotesPdf() {
+    notesPdfBase64 = null;
+    notesPdfReading = false;
+    document.getElementById('notes-pdf').value = '';
+    document.getElementById('notes-pdf-file-name').textContent = 'No file chosen';
+    document.getElementById('clear-notes-pdf').classList.add('hidden');
 }
 
 // Sermon slides are analyzed during extraction and reviewed before generation.
@@ -230,7 +268,8 @@ document.getElementById('sermon-form').addEventListener('submit', async (e) => {
     document.getElementById('extract-error').classList.add('hidden');
 
     const notes = document.getElementById('notes').value.trim();
-    if (!notes) { showExtractError('Please enter sermon notes'); return; }
+    if (notesPdfReading) { showExtractError('The notes PDF is still being read. Please wait a moment.'); return; }
+    if (!notes && !notesPdfBase64) { showExtractError('Please paste sermon notes or upload a notes PDF'); return; }
     if (slidesReading) { showExtractError('The slide PDF is still being read. Please wait a moment.'); return; }
     const requestVersion = ++extractionVersion;
     slideAnalysis = null;
@@ -245,7 +284,7 @@ document.getElementById('sermon-form').addEventListener('submit', async (e) => {
         const resp = await fetch('/web/extract', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ notes, image: coverImageBase64, commentaries, slides_pdf: slidesPdfBase64 }),
+            body: JSON.stringify({ notes, notes_pdf: notesPdfBase64, image: coverImageBase64, commentaries, slides_pdf: slidesPdfBase64 }),
             credentials: 'include',
         });
 
@@ -273,7 +312,7 @@ document.getElementById('sermon-form').addEventListener('submit', async (e) => {
 
 function setExtracting(loading) {
     document.getElementById('extract-btn').disabled = loading;
-    document.getElementById('extract-btn-text').textContent = loading ? (slidesPdfBase64 ? 'Reading outline and slides…' : 'Extracting…') : 'Extract Outline';
+    document.getElementById('extract-btn-text').textContent = loading ? (slidesPdfBase64 ? 'Reading outline and slides…' : notesPdfBase64 ? 'Reading notes PDF…' : 'Extracting…') : 'Extract Outline';
     document.getElementById('extract-btn-spinner').classList.toggle('hidden', !loading);
     document.querySelectorAll('#sermon-form input, #sermon-form textarea, #sermon-form button').forEach(el => { el.disabled = loading; });
 }
@@ -326,6 +365,16 @@ function showExtractError(msg) {
 }
 
 // ─── Step 2: Review ───────────────────────────────────────────────────────────
+function tableNote(tables) {
+    if (!tables || tables.length === 0) return '';
+    return tables.map(t => {
+        const cols = (t.headers || []).join(' / ');
+        const name = t.caption || cols || 'Table';
+        const rows = (t.rows || []).length;
+        return `<p class="slide-help">Table: ${escapeHtml(name)} (${rows} row${rows === 1 ? '' : 's'})</p>`;
+    }).join('');
+}
+
 function renderReviewStep(outline, candidates) {
     const meta = outline.metadata;
     const summaryEl = document.getElementById('outline-summary');
@@ -362,9 +411,11 @@ function renderReviewStep(outline, candidates) {
                     data-placeholder="+ verse"
                 >${escapeHtml(ptRef)}</span>
                 ${subHtml}
+                ${tableNote(pt.tables)}
             </li>`;
         }).join('') + '</ol>';
     }
+    pointsHtml += tableNote(outline.tables);
 
     summaryEl.innerHTML = `
         <div class="edit-meta-grid">
@@ -536,6 +587,7 @@ document.getElementById('start-over-btn').addEventListener('click', () => {
     document.getElementById('notes').value = '';
     clearImagePreview(); clearBulletinPdf(); clearPrayerPdf();
     clearSlidesPdf();
+    clearNotesPdf();
     document.getElementById('outline-summary').innerHTML = '';
     document.getElementById('commentary-cards').innerHTML = '';
     document.getElementById('extract-error-message').textContent = '';

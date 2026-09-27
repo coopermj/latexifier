@@ -113,7 +113,8 @@ def scripture_placeholder(reference: str, version: str, nolinks: bool = False, s
 
 
 def _render_table(table: Table) -> list[str]:
-    """Render a table as LaTeX tabularx environment with text wrapping."""
+    """Render a table as an xltabular with wrapping cells and a header row
+    that repeats if the table breaks across pages."""
     lines = []
 
     if not table.headers:
@@ -121,22 +122,23 @@ def _render_table(table: Table) -> list[str]:
 
     num_cols = len(table.headers)
     # Use X columns for auto-width with text wrapping
-    col_spec = "|" + "X|" * num_cols
+    col_spec = "|" + ">{\\raggedright\\arraybackslash}X|" * num_cols
 
     lines.append("")
     if table.caption:
-        lines.append(rf"\textbf{{{escape_latex(table.caption)}}}")
-        lines.append(r"\vspace{0.3cm}")
+        lines.append(rf"\noindent\textbf{{{escape_latex(table.caption)}}}")
+        lines.append(r"\nopagebreak\vspace{0.3cm}")
         lines.append("")
 
-    # Use tabularx with \textwidth for proper margins
-    lines.append(rf"\begin{{tabularx}}{{\textwidth}}{{{col_spec}}}")
+    lines.append(r"{\renewcommand{\arraystretch}{1.3}")
+    lines.append(rf"\begin{{xltabular}}{{\textwidth}}{{{col_spec}}}")
     lines.append(r"\hline")
 
-    # Header row (bold)
+    # Header row (bold), repeated at the top of each continued page
     header_cells = [rf"\textbf{{{escape_latex(h)}}}" for h in table.headers]
     lines.append(" & ".join(header_cells) + r" \\")
     lines.append(r"\hline")
+    lines.append(r"\endhead")
 
     # Data rows
     for row in table.rows:
@@ -146,7 +148,7 @@ def _render_table(table: Table) -> list[str]:
         lines.append(" & ".join(escaped_cells) + r" \\")
         lines.append(r"\hline")
 
-    lines.append(r"\end{tabularx}")
+    lines.append(r"\end{xltabular}}")
     lines.append(r"\vspace{0.5cm}")
     lines.append("")
 
@@ -408,8 +410,9 @@ async def generate_sermon_latex(
 % Multi-column layout for main passage
 \usepackage{multicol}
 
-% Tables with auto-width columns
+% Tables with auto-width columns (xltabular: tabularx that can break across pages)
 \usepackage{tabularx}
+\usepackage{xltabular}
 
 % Parallel columns that can break across pages
 \usepackage{paracol}
@@ -689,7 +692,9 @@ async def generate_sermon_latex(
 
     # Render any top-level tables not associated with a specific point
     if outline.tables:
-        lines.append(r"\vspace{0.5cm}")
+        # Standalone tables (e.g. a comparison chart on its own page of the
+        # notes) start on a fresh page rather than trailing the last point.
+        lines.append(r"\clearpage{}")
         for table in outline.tables:
             lines.extend(_render_table(table))
 

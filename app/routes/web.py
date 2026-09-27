@@ -1,5 +1,6 @@
 """Web interface routes for sermon notes processing."""
 import base64
+import binascii
 import hashlib
 import json
 import logging
@@ -13,7 +14,7 @@ from pydantic import BaseModel
 from ..commentary import CommentarySource, CommentaryResult, CommentaryEntry, fetch_commentary_for_reference
 from ..compiler import CompilationError
 from ..config import get_settings
-from ..llm import extract_sermon_outline_from_text, LLMError
+from ..llm import extract_sermon_outline, extract_sermon_outline_from_text, LLMError
 from ..models import SermonOutline
 from ..sermon_latex import generate_sermon_latex
 from ..storage import save_pdf
@@ -82,7 +83,8 @@ ExtractCandidateSource = CommentarySourceModel
 
 
 class ExtractRequest(BaseModel):
-    notes: str
+    notes: str = ""
+    notes_pdf: str | None = None  # Base64 encoded sermon notes PDF (alternative to pasted notes)
     image: str | None = None
     commentaries: list[str] = []
     slides_pdf: str | None = None
@@ -103,7 +105,8 @@ SelectedCommentaryResult = CommentarySourceModel
 
 
 class GenerateRequest(BaseModel):
-    notes: str
+    notes: str = ""
+    notes_pdf: str | None = None  # Base64 encoded sermon notes PDF (alternative to pasted notes)
     image: str | None = None  # Base64 encoded image
     commentaries: list[str] = []  # Commentary sources: mhc, calvincommentaries
     bulletin_pdf: str | None = None  # Base64 encoded bulletin PDF
@@ -120,6 +123,33 @@ class GenerateResponse(BaseModel):
     tex_url: str | None = None
     error: str | None = None
     log: str | None = None
+
+
+MAX_NOTES_PDF_BYTES = 10 * 1024 * 1024
+
+
+class NotesPdfError(ValueError):
+    """The uploaded sermon notes PDF could not be used."""
+
+
+def _decode_notes_pdf(encoded: str) -> bytes:
+    """Strictly decode and validate an uploaded sermon notes PDF."""
+    if len(encoded) > 4 * ((MAX_NOTES_PDF_BYTES + 2) // 3):
+        raise NotesPdfError("Sermon notes PDF must be no larger than 10 MB.")
+    try:
+        pdf_bytes = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise NotesPdfError("The sermon notes upload is not valid base64.") from exc
+    if not pdf_bytes.startswith(b"%PDF-"):
+        raise NotesPdfError("The sermon notes file is not a PDF.")
+    return pdf_bytes
+
+
+async def _extract_outline(notes: str, notes_pdf: bytes | None) -> SermonOutline:
+    """Extract the outline from the notes PDF when given, otherwise from pasted text."""
+    if notes_pdf is not None:
+        return await extract_sermon_outline(notes_pdf, notes or None)
+    return await extract_sermon_outline_from_text(notes)
 
 
 def _hash_password(password: str) -> str:
@@ -185,19 +215,20 @@ async def extract_sermon(
         if not session or session not in _valid_sessions:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
-    if not request.notes or not request.notes.strip():
+    if not request.notes.strip() and not request.notes_pdf:
         return ExtractResponse(success=False, error="No sermon notes provided")
 
     try:
-        # Validate the optional upload before spending on outline extraction.
+        # Validate the optional uploads before spending on outline extraction.
+        notes_pdf = _decode_notes_pdf(request.notes_pdf) if request.notes_pdf else None
         slides_data = decode_slide_pdf(request.slides_pdf) if request.slides_pdf else None
-        outline = await extract_sermon_outline_from_text(request.notes)
+        outline = await _extract_outline(request.notes, notes_pdf)
         slide_analysis = await analyze_slides(slides_data, outline) if slides_data else None
         slide_previews = {
             name: base64.b64encode(content).decode("ascii")
             for name, content in build_slide_assets(slides_data, slide_analysis).items()
         } if slide_analysis is not None else {}
-    except SlideError as exc:
+    except (SlideError, NotesPdfError) as exc:
         return ExtractResponse(success=False, error=str(exc))
     except LLMError as exc:
         logger.error("LLM extraction failed: %s", exc)
@@ -250,14 +281,15 @@ async def generate_sermon_pdf(
         if not session or session not in _valid_sessions:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
-    if not request.notes or not request.notes.strip():
+    if not request.outline and not request.notes.strip() and not request.notes_pdf:
         return GenerateResponse(success=False, error="No sermon notes provided")
 
     try:
+        notes_pdf = _decode_notes_pdf(request.notes_pdf) if request.notes_pdf and not request.outline else None
         slides_data = decode_slide_pdf(request.slides_pdf) if request.slides_pdf else None
         if request.slide_analysis is not None and slides_data is None:
             raise SlideError("The reviewed slide additions require the original slide PDF. Upload it again.")
-    except SlideError as exc:
+    except (SlideError, NotesPdfError) as exc:
         return GenerateResponse(success=False, error=str(exc))
 
     # Use pre-extracted outline if provided, otherwise extract via LLM
@@ -265,7 +297,7 @@ async def generate_sermon_pdf(
         outline = request.outline
     else:
         try:
-            outline = await extract_sermon_outline_from_text(request.notes)
+            outline = await _extract_outline(request.notes, notes_pdf)
         except LLMError as exc:
             logger.error("LLM extraction failed: %s", exc)
             return GenerateResponse(success=False, error=str(exc))
