@@ -240,6 +240,13 @@ async def test_poetry_line_breaks_survive_real_sermon_columns(monkeypatch):
     (r'\begin{poetry}\vs{3}For the \name{Lord} speaks.\end{poetry}', False),
     (r'\begin{poetry}\vs{2}For the \name{Lord} speaks.\end{poetry}', True),
     (r'\begin{poetry}\vs{2}For the \name{Lord} \hyperlink{strongs-3004}{speaks}.\end{poetry}', True),
+    (r'\vs{2}For the LORD speaks!', False),            # punctuation changed
+    (r'\vs{2}For the LORD speaks', False),             # punctuation dropped
+    (r'\vs{2}for the LORD speaks.', False),            # capitalization changed
+    (r'\vs{2}For the LORD Speaks.', False),
+    (r'\vs{2}For the \name{God} speaks.', False),      # divine name swapped
+    (r'\vs{2}For the \textbf{LORD} speaks.', False),   # unapproved markup
+    (r'\vs{2}For the LORD speak s.', False),           # word split
 ])
 async def test_scripture_ai_formatting_cannot_change_words_or_verse_numbers(monkeypatch, result, accepted):
     from app import placeholders
@@ -255,3 +262,13 @@ async def test_scripture_ai_formatting_cannot_change_words_or_verse_numbers(monk
     monkeypatch.setattr(placeholders.httpx, 'AsyncClient', lambda: client)
     actual = await placeholders._analyze_scripture_with_ai(original, 'Isaiah 1:2')
     assert actual == (result if accepted else original)
+
+
+@pytest.mark.parametrize('result,accepted', [
+    (r'\heading{The Day of the \name{Lord}} \begin{poetry}\vs{12}For the \name{Lord} of hosts\end{poetry}', True),
+    (r'\heading{The Day of \name{Lord}} \vs{12}For the \name{Lord} of hosts', False),  # "the" dropped
+    (r'\heading{The Day of the \name{Lord}} \vs{12}For \name{Lord} of hosts', False),
+])
+def test_divine_name_tags_inside_headings_keep_exact_wording(result, accepted):
+    from app.placeholders import _same_scripture_wording
+    assert _same_scripture_wording(r'\heading{The Day of the LORD} \vs{12}For the LORD of hosts', result) is accepted

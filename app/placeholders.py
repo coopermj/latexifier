@@ -481,7 +481,7 @@ SCRIPTURE_ANALYSIS_PROMPT = '''Analyze this Bible passage and apply LaTeX format
    - Prophetic pronouncements
    - Songs and hymns embedded in narrative
 
-2. **Divine Name Tagging**: When "the Lord" or "the LORD" or "LORD" refers to God (YHWH), replace it with \\name{Lord}. Do NOT tag when "lord" refers to a human master.
+2. **Divine Name Tagging**: When the word "LORD" or "Lord" refers to God (YHWH), wrap ONLY that one word as \\name{Lord}. Keep every surrounding word, including "the": "the LORD" becomes "the \\name{Lord}" (never just "\\name{Lord}"). Do NOT tag when "lord" refers to a human master.
 
 IMPORTANT RULES:
 - Return ONLY the modified scripture text, nothing else
@@ -489,6 +489,7 @@ IMPORTANT RULES:
 - Existing \\begin{poetry}...\\end{poetry} blocks come from explicit source markup. Preserve their boundaries and poetic lines; do not remove, nest, or turn them into prose.
 - Do NOT wrap entire passages as poetry if only portions are poetic
 - If no poetry is detected, return the text unchanged except for \\name{Lord} tags
+- NEVER change, add, remove, reorder, re-capitalize, or respell any word of scripture. Any change to the wording causes your output to be discarded.
 - Do NOT alter any punctuation, quotation marks, or non-structural characters — copy them byte-for-byte
 - Maintain exact spacing and line breaks
 - Keep all \\heading{...} commands OUTSIDE poetry environments; end poetry before a heading and restart it afterward if needed
@@ -498,11 +499,46 @@ Scripture text:
 
 
 def _scripture_content_tokens(text: str) -> list[str]:
-    """Compare scripture words and numbers while ignoring formatting wrappers."""
+    """Loose per-line words, used only to compare poetry line structure."""
     text = re.sub(r"\\(?:begin|end)\{poetry\}", "", text)
     text = re.sub(r"\\hyperlink\{strongs-\d+\}", "", text)
     text = re.sub(r"\\[A-Za-z]+\*?", "", text)
     return re.findall(r"\w+", text.casefold())
+
+
+# A \\name{...} tag (kept whole so it can match the word it wraps), any other
+# command name, a word, or a single punctuation mark or brace.
+_WORDING_TOKEN = re.compile(r"\\name\{[^{}]*\}|\\[A-Za-z]+\*?|\w+|[^\w\s]")
+# Quote direction is repaired by _smart_scripture_quotes after AI formatting.
+_QUOTE_FOLD = str.maketrans({"\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'"})
+_NAME_TAG = re.compile(r"\\name\{([^{}]*)\}")
+
+
+def _wording_tokens(text: str) -> list[str]:
+    text = re.sub(r"\\(?:begin|end)\{poetry\}", " ", text)
+    text = re.sub(r"\\hyperlink\{strongs-\d+\}\{([^{}]*)\}", r"\1", text)
+    return _WORDING_TOKEN.findall(text.translate(_QUOTE_FOLD))
+
+
+def _same_scripture_wording(original: str, result: str) -> bool:
+    """True only if AI formatting left every word, number, punctuation mark and
+    existing command exactly as it was, case included.
+
+    The only differences allowed are the formatting the AI is asked to add:
+    poetry environments, Strong's \\hyperlink wrappers, whitespace, quote
+    direction, and \\name{Lord} in place of the same word (LORD/Lord).
+    """
+    before, after = _wording_tokens(original), _wording_tokens(result)
+    if len(before) != len(after):
+        return False
+    for word, formatted in zip(before, after):
+        if word == formatted:
+            continue
+        name = _NAME_TAG.fullmatch(formatted)
+        if name and name.group(1) == "Lord" and word.casefold() == "lord":
+            continue
+        return False
+    return True
 
 
 def _poetry_signature(text: str) -> list[list[list[str]]] | None:
@@ -597,7 +633,7 @@ async def _analyze_scripture_with_ai(
                 if block.get("type") == "text":
                     result = block.get("text", "").strip()
                     if result:
-                        if _scripture_content_tokens(result) != _scripture_content_tokens(text):
+                        if not _same_scripture_wording(text, result):
                             logger.warning("AI changed scripture words or numbers for %s; using original text", reference)
                             return text
                         original_poetry = _poetry_signature(text)
