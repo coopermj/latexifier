@@ -13,7 +13,9 @@ import httpx
 import pymupdf
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
 
-from .anthropic_config import ANTHROPIC_API_VERSION, ANTHROPIC_MESSAGES_URL, ANTHROPIC_MODEL
+from .anthropic_config import (
+    ANTHROPIC_API_VERSION, ANTHROPIC_FALLBACK_BETA, ANTHROPIC_FALLBACKS, ANTHROPIC_MESSAGES_URL, ANTHROPIC_MODEL,
+)
 from .commentariat_db import normalize_book
 from .config import get_settings
 from .models import SermonOutline
@@ -216,8 +218,9 @@ async def analyze_slides(pdf_bytes: bytes, outline: SermonOutline) -> SlideAnaly
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 ANTHROPIC_MESSAGES_URL,
-                headers={"x-api-key": settings.anthropic_api_key, "anthropic-version": ANTHROPIC_API_VERSION, "content-type": "application/json"},
-                json={"model": ANTHROPIC_MODEL, "max_tokens": 16000, "output_config": {"effort": "medium"}, "messages": [{"role": "user", "content": [
+                headers={"x-api-key": settings.anthropic_api_key, "anthropic-version": ANTHROPIC_API_VERSION,
+                         "anthropic-beta": ANTHROPIC_FALLBACK_BETA, "content-type": "application/json"},
+                json={"model": ANTHROPIC_MODEL, "fallbacks": ANTHROPIC_FALLBACKS, "max_tokens": 16000, "output_config": {"effort": "medium"}, "messages": [{"role": "user", "content": [
                     {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": base64.b64encode(pdf_bytes).decode("ascii")}},
                     {"type": "text", "text": prompt},
                 ]}]},
@@ -231,6 +234,9 @@ async def analyze_slides(pdf_bytes: bytes, outline: SermonOutline) -> SlideAnaly
         raise SlideError("Anthropic could not complete the slide analysis. Please retry.") from exc
     if not isinstance(payload, dict):
         raise SlideError("Anthropic returned an invalid slide analysis. Please retry.")
+    if payload.get("stop_reason") == "refusal":
+        raise SlideError("Claude declined to analyze these slides, and the fallback model declined too. "
+                         "Remove the slides upload or try again.")
     if payload.get("stop_reason") != "end_turn":
         raise SlideError("Anthropic returned an incomplete slide analysis. Please retry.")
     try:

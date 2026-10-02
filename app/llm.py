@@ -6,8 +6,12 @@ import httpx
 
 from .anthropic_config import (
     ANTHROPIC_API_VERSION,
+    ANTHROPIC_FALLBACK_BETA,
+    ANTHROPIC_FALLBACKS,
     ANTHROPIC_MESSAGES_URL,
     ANTHROPIC_MODEL,
+    AnthropicRefusal,
+    raise_if_refused,
 )
 from .config import get_settings
 from .models import SermonOutline
@@ -192,6 +196,7 @@ async def _normalize_scripture_refs(outline: SermonOutline) -> SermonOutline:
                 ANTHROPIC_MESSAGES_URL,
                 json={
                     "model": ANTHROPIC_MODEL,
+                    "fallbacks": ANTHROPIC_FALLBACKS,
                     "max_tokens": 4096,
                     "output_config": {"effort": "low"},
                     "messages": [{"role": "user", "content": prompt}],
@@ -200,13 +205,16 @@ async def _normalize_scripture_refs(outline: SermonOutline) -> SermonOutline:
                     "x-api-key": settings.anthropic_api_key,
                     "content-type": "application/json",
                     "anthropic-version": ANTHROPIC_API_VERSION,
+                    "anthropic-beta": ANTHROPIC_FALLBACK_BETA,
                 },
                 timeout=60.0,
             )
             response.raise_for_status()
 
+        data = response.json()
+        raise_if_refused(data)
         text = "".join(
-            block.get("text", "") for block in response.json().get("content", [])
+            block.get("text", "") for block in data.get("content", [])
             if block.get("type") == "text"
         ).strip()
         if text.startswith("```"):
@@ -279,6 +287,7 @@ async def _assign_missing_verse_refs(outline: SermonOutline) -> SermonOutline:
                 ANTHROPIC_MESSAGES_URL,
                 json={
                     "model": ANTHROPIC_MODEL,
+                    "fallbacks": ANTHROPIC_FALLBACKS,
                     "max_tokens": 4096,
                     "output_config": {"effort": "low"},
                     "messages": [{"role": "user", "content": prompt}],
@@ -287,13 +296,16 @@ async def _assign_missing_verse_refs(outline: SermonOutline) -> SermonOutline:
                     "x-api-key": settings.anthropic_api_key,
                     "content-type": "application/json",
                     "anthropic-version": ANTHROPIC_API_VERSION,
+                    "anthropic-beta": ANTHROPIC_FALLBACK_BETA,
                 },
                 timeout=60.0,
             )
             response.raise_for_status()
 
+        data = response.json()
+        raise_if_refused(data)
         text = "".join(
-            block.get("text", "") for block in response.json().get("content", [])
+            block.get("text", "") for block in data.get("content", [])
             if block.get("type") == "text"
         ).strip()
         if text.startswith("```"):
@@ -362,6 +374,7 @@ async def extract_sermon_outline(pdf_bytes: bytes, notes: str | None = None) -> 
     # Build the API request
     request_body = {
         "model": ANTHROPIC_MODEL,
+        "fallbacks": ANTHROPIC_FALLBACKS,
         "max_tokens": 16384,
         "output_config": {"effort": "medium"},
         "messages": [
@@ -388,7 +401,8 @@ async def extract_sermon_outline(pdf_bytes: bytes, notes: str | None = None) -> 
     headers = {
         "x-api-key": api_key,
         "content-type": "application/json",
-        "anthropic-version": ANTHROPIC_API_VERSION
+        "anthropic-version": ANTHROPIC_API_VERSION,
+        "anthropic-beta": ANTHROPIC_FALLBACK_BETA
     }
 
     try:
@@ -420,6 +434,15 @@ async def extract_sermon_outline(pdf_bytes: bytes, notes: str | None = None) -> 
 
     # Parse the response
     data = response.json()
+    try:
+        raise_if_refused(data)
+    except AnthropicRefusal as exc:
+        logger.warning("Claude declined sermon extraction (category: %s)", exc)
+        raise LLMError(
+            "Claude declined to process these sermon notes, and the fallback model "
+            "declined too. Try again, or simplify the notes and retry.",
+            status_code=422,
+        ) from exc
     content_blocks = data.get("content", [])
 
     if not content_blocks:
@@ -483,6 +506,7 @@ async def extract_sermon_outline_from_text(text: str) -> SermonOutline:
     # Build the API request with text content
     request_body = {
         "model": ANTHROPIC_MODEL,
+        "fallbacks": ANTHROPIC_FALLBACKS,
         "max_tokens": 8192,
         "output_config": {"effort": "medium"},
         "messages": [
@@ -501,7 +525,8 @@ async def extract_sermon_outline_from_text(text: str) -> SermonOutline:
     headers = {
         "x-api-key": api_key,
         "content-type": "application/json",
-        "anthropic-version": ANTHROPIC_API_VERSION
+        "anthropic-version": ANTHROPIC_API_VERSION,
+        "anthropic-beta": ANTHROPIC_FALLBACK_BETA
     }
 
     try:
@@ -533,6 +558,15 @@ async def extract_sermon_outline_from_text(text: str) -> SermonOutline:
 
     # Parse the response
     data = response.json()
+    try:
+        raise_if_refused(data)
+    except AnthropicRefusal as exc:
+        logger.warning("Claude declined sermon extraction (category: %s)", exc)
+        raise LLMError(
+            "Claude declined to process these sermon notes, and the fallback model "
+            "declined too. Try again, or simplify the notes and retry.",
+            status_code=422,
+        ) from exc
     content_blocks = data.get("content", [])
 
     if not content_blocks:

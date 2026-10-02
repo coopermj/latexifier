@@ -10,8 +10,12 @@ import httpx
 
 from .anthropic_config import (
     ANTHROPIC_API_VERSION,
+    ANTHROPIC_FALLBACK_BETA,
+    ANTHROPIC_FALLBACKS,
     ANTHROPIC_MESSAGES_URL,
     ANTHROPIC_MODEL,
+    AnthropicRefusal,
+    raise_if_refused,
 )
 from .config import get_settings
 from .commentary import (
@@ -599,6 +603,7 @@ async def _analyze_scripture_with_ai(
 
     request_body = {
         "model": ANTHROPIC_MODEL,
+        "fallbacks": ANTHROPIC_FALLBACKS,
         "max_tokens": 8192,
         "output_config": {"effort": "low"},
         "messages": [
@@ -612,7 +617,8 @@ async def _analyze_scripture_with_ai(
     headers = {
         "x-api-key": api_key,
         "content-type": "application/json",
-        "anthropic-version": ANTHROPIC_API_VERSION
+        "anthropic-version": ANTHROPIC_API_VERSION,
+        "anthropic-beta": ANTHROPIC_FALLBACK_BETA
     }
 
     try:
@@ -626,6 +632,11 @@ async def _analyze_scripture_with_ai(
             response.raise_for_status()
 
         data = response.json()
+        try:
+            raise_if_refused(data)
+        except AnthropicRefusal as exc:
+            logger.warning("Claude declined to format %s (category: %s); using original text", reference, exc)
+            return text
         content_blocks = data.get("content", [])
 
         if content_blocks:

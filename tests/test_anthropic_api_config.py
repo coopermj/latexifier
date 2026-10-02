@@ -47,6 +47,8 @@ def assert_fable_request(client):
     kwargs = client.post.call_args.kwargs
     payload = kwargs['json']
     assert payload['model'] == 'claude-fable-5-1'
+    assert payload['fallbacks'] == 'default'
+    assert kwargs['headers']['anthropic-beta'] == 'server-side-fallback-2026-07-01'
     assert payload['max_tokens'] >= 2048
     assert payload['output_config']['effort'] in {'low', 'medium'}
     assert 'thinking' not in payload  # Fable's adaptive thinking is always on.
@@ -90,3 +92,36 @@ async def test_fable_scripture_formatting_uses_text_after_thinking(anthropic_res
     client = anthropic_response(formatted)
     assert await placeholders._analyze_scripture_with_ai(original, 'Isaiah 1:18') == formatted
     assert_fable_request(client)
+
+
+def _refusal(client):
+    response = MagicMock()
+    response.json.return_value = {'content': [], 'stop_reason': 'refusal', 'stop_details': {'type': 'refusal', 'category': 'cyber'}}
+    client.post.return_value = response
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('source', ['text', 'pdf'])
+async def test_extraction_refusal_gives_clear_error(anthropic_response, source):
+    client = anthropic_response('unused')
+    _refusal(client)
+    with pytest.raises(llm.LLMError, match='declined'):
+        await (llm.extract_sermon_outline_from_text('Sermon notes') if source == 'text' else llm.extract_sermon_outline(b'%PDF-test'))
+    assert_fable_request(client)
+
+
+@pytest.mark.asyncio
+async def test_scripture_formatting_refusal_keeps_original_text(anthropic_response):
+    client = anthropic_response('unused')
+    _refusal(client)
+    original = r'\vs{18}“Come now,” says the Lord.'
+    assert await placeholders._analyze_scripture_with_ai(original, 'Isaiah 1:18') == original
+    assert_fable_request(client)
+
+
+@pytest.mark.asyncio
+async def test_ref_normalization_refusal_keeps_outline(anthropic_response):
+    outline = SermonOutline(metadata=SermonMetadata(title='Test'), main_passage='Isaiah 1:1-31', points=[SermonPoint(number=1, title='Repentance', scripture_refs=['vv. 10-20'])])
+    client = anthropic_response('unused')
+    _refusal(client)
+    assert await llm._normalize_scripture_refs(outline) == outline

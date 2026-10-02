@@ -154,6 +154,8 @@ async def test_analyzes_actual_pdf_document_and_skips_thinking(pdf, outline, ant
     assert actual.unmatched_slides == [3]
     payload = client.post.call_args.kwargs["json"]
     assert payload["model"] == "claude-fable-5-1"
+    assert payload["fallbacks"] == "default"
+    assert client.post.call_args.kwargs["headers"]["anthropic-beta"] == "server-side-fallback-2026-07-01"
     assert payload["output_config"]["effort"] == "medium"
     document = payload["messages"][0]["content"][0]
     assert document["type"] == "document"
@@ -166,6 +168,13 @@ async def test_analyzes_actual_pdf_document_and_skips_thinking(pdf, outline, ant
 async def test_bad_or_incomplete_model_output_is_explicit(pdf, outline, anthropic, value, stop_reason):
     anthropic(value, stop_reason)
     with pytest.raises(slides.SlideError, match="invalid|incomplete"):
+        await slides.analyze_slides(pdf, outline)
+
+
+@pytest.mark.asyncio
+async def test_refusal_is_reported_as_a_decline(pdf, outline, anthropic):
+    anthropic("", "refusal")
+    with pytest.raises(slides.SlideError, match="declined"):
         await slides.analyze_slides(pdf, outline)
 
 
