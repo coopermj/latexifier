@@ -220,3 +220,28 @@ async def test_foundational_scripture_not_repeated_when_inside_main_passage(foun
     assert f"({foundational})" in section  # citation is always kept
     assert (f"[[scripture:{foundational}|" in section) is repeated
 
+
+@pytest.mark.asyncio
+async def test_standalone_statements_render_as_callouts_in_place():
+    from app.models import SermonOutline, SermonMetadata, SermonPoint, SermonSubPoint
+    from app.sermon_latex import generate_sermon_latex
+    outline = SermonOutline(
+        metadata=SermonMetadata(title="Pride"), main_passage="Isaiah 2:6-22",
+        foundational_principle="God dismantles our pride.",
+        key_quotes=["“Pride is a bigger issue for me than I would like to admit.”"],
+        points=[
+            SermonPoint(number=1, title="Diagnostic Questions", numbered_items=["What do I trust?"],
+                        closing_statement="We face two options."),
+            SermonPoint(number=2, title="Discarding our Idols", content="Intro text.",
+                        sub_points=[SermonSubPoint(label="A", title="Futility", content="Worthless.")],
+                        closing_statement="Our confession of need is a catalyst for faith."),
+        ],
+    )
+    tex = await generate_sermon_latex(outline, include_main_passage=False)
+    principle = tex.split(r"\section{Foundational Principle}", 1)[1]
+    assert principle.index("God dismantles our pride.") < principle.index("Pride is a bigger issue")
+    assert r"\itshape" in principle.split("Pride is a bigger issue")[0]
+    questions = tex.split(r"\section{Diagnostic Questions}", 1)[1]
+    assert questions.index(r"\end{enumerate}") < questions.index("We face two options.")
+    idols = tex.split(r"\section{Discarding our Idols}", 1)[1]
+    assert idols.index("Worthless.") < idols.index("Our confession of need")

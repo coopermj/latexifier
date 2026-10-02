@@ -134,6 +134,19 @@ def _within_passage(reference: str, passage: str) -> bool:
                 and outer[1] <= inner[1] and inner[2] <= outer[2])
 
 
+def _render_callout(text: str) -> list[str]:
+    """Render a standalone statement from the notes as a centered italic block."""
+    return [
+        "",
+        r"\begin{center}",
+        r"\begin{minipage}{0.85\linewidth}\centering\itshape",
+        escape_latex(text),
+        r"\end{minipage}",
+        r"\end{center}",
+        "",
+    ]
+
+
 def _render_table(table: Table) -> list[str]:
     """Render a table as an xltabular with wrapping cells and a header row
     that repeats if the table breaks across pages."""
@@ -654,6 +667,8 @@ async def generate_sermon_latex(
         else:
             lines.append(principle_text)
         lines.append("")
+        for quote in outline.key_quotes:
+            lines.extend(_render_callout(quote))
 
         # Include foundational scripture text, unless it is already shown as
         # part of the main passage at the front of the document.
@@ -668,6 +683,9 @@ async def generate_sermon_latex(
         lines.extend(_render_slide_scriptures(slide_items.get("foundation", []), subpoint_version))
         lines.append(r"\vspace{2.2in}")
         lines.append("")
+    else:
+        for quote in outline.key_quotes:
+            lines.extend(_render_callout(quote))
 
     # Fetch commentaries early so note pages can link to them
     has_commentary = commentary_sources or commentary_overrides is not None
@@ -812,6 +830,8 @@ def _render_point(
         if point.tables:
             for table in point.tables:
                 lines.extend(_render_table(table))
+        if point.closing_statement:
+            lines.extend(_render_callout(point.closing_statement))
     else:
         # Point with no sub-points
         lines.append(r"\newpage{}")
@@ -879,6 +899,9 @@ def _render_point(
         if point.tables:
             for table in point.tables:
                 lines.extend(_render_table(table))
+
+        if point.closing_statement:
+            lines.extend(_render_callout(point.closing_statement))
 
         if point_links:
             lines.append(r"\vfill")

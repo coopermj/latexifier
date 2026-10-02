@@ -72,6 +72,13 @@ TABLE FORMAT:
 - Extract each table into the "tables" array with headers and rows
 - Tables may have an optional caption/title on the line before them
 
+STANDALONE STATEMENTS:
+- Notes often set a sentence apart on its own line (centered, indented, italic, or in quotation marks) instead of making it part of a point. These are NOT bullets, NOT numbered items, and NOT part of a neighboring sentence.
+- foundational_principle holds ONLY the main idea / thesis text itself. Never append a following quote or statement to it.
+- A standalone quote or statement directly under the main idea, before the first point → "key_quotes" (keep its quotation marks if it has them).
+- A standalone summary or transition statement that comes after a section's items (after its sub-points, list, or questions) → that point's "closing_statement". The final summary statement at the end of the notes is the last point's closing_statement.
+- A point's "content" is only the text right after its heading, before its sub-points or list. A statement that comes AFTER the sub-points is the closing_statement, not content.
+
 IMPORTANT STRUCTURE RULES:
 - Use "bullets" at the POINT level for simple bullet lists (●, -, •) WITHOUT sub-points
 - Use "sub_points" when items are lettered (A, B, C) OR numbered (1, 2, 3) under a section heading — use the original label ("A" or "1") as the label field
@@ -91,6 +98,7 @@ Return ONLY valid JSON matching this exact structure:
   "main_passage": "string (e.g., 'James 3:1-12')",
   "foundational_principle": "string or null",
   "foundational_scripture": "string or null (ONLY a reference the notes explicitly attach to the foundational principle; null if none — never copy main_passage here)",
+  "key_quotes": ["standalone quote under the main idea"],
   "points": [
     {
       "number": 1,
@@ -115,7 +123,8 @@ Return ONLY valid JSON matching this exact structure:
           "rows": [["cell1", "cell2", "cell3"], ["cell4", "cell5", "cell6"]],
           "caption": "optional table title or null"
         }
-      ]
+      ],
+      "closing_statement": "string or null (standalone statement after this point's items)"
     }
   ],
   "tables": [],

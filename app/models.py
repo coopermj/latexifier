@@ -127,6 +127,7 @@ class SermonPoint(BaseModel):
     sub_points: list[SermonSubPoint] = Field(default_factory=list)
     scripture_refs: list[str] = Field(default_factory=list, description="Scripture references for this point")
     tables: list["Table"] = Field(default_factory=list, description="Tables that appear within this point")
+    closing_statement: str | None = Field(None, description="Standalone summary statement that ends this point")
 
     @field_validator('bullets', 'numbered_items', 'sub_points', 'scripture_refs', 'tables', mode='before')
     @classmethod
@@ -152,11 +153,12 @@ class SermonOutline(BaseModel):
     main_passage: str = Field(..., description="Primary scripture passage (e.g., 'James 3:1-12')")
     foundational_principle: str | None = Field(None, description="Key principle or thesis statement")
     foundational_scripture: str | None = Field(None, description="Scripture for foundational principle")
+    key_quotes: list[str] = Field(default_factory=list, description="Standalone quotes set apart under the main idea")
     points: list[SermonPoint] = Field(default_factory=list)
     tables: list[Table] = Field(default_factory=list, description="Tables found in the notes")
     all_scripture_refs: list[str] = Field(default_factory=list, description="All unique scripture references")
 
-    @field_validator('points', 'tables', 'all_scripture_refs', mode='before')
+    @field_validator('points', 'tables', 'all_scripture_refs', 'key_quotes', mode='before')
     @classmethod
     def none_to_list(cls, v):
         return v if v is not None else []
