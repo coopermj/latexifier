@@ -200,3 +200,23 @@ async def test_rebels_sermon_retains_section_intro_before_first_subpoint():
                 assert escape_latex(sub.content) in tex
             for bullet in sub.bullets:
                 assert escape_latex(bullet) in tex
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('foundational,repeated', [
+    ('Isaiah 2:6-22', False),   # same as main passage
+    ('Isaiah 2:11', False),     # verse inside main passage
+    ('Isaiah 2', True),         # whole chapter is wider than the passage
+    ('Isaiah 3:1', True),
+    ('Romans 12:3', True),
+])
+async def test_foundational_scripture_not_repeated_when_inside_main_passage(foundational, repeated):
+    from app.models import SermonOutline, SermonMetadata
+    from app.sermon_latex import generate_sermon_latex
+    outline = SermonOutline(metadata=SermonMetadata(title="Pride"), main_passage="Isaiah 2:6-22",
+                            foundational_principle="God dismantles pride.", foundational_scripture=foundational, points=[])
+    tex = await generate_sermon_latex(outline)
+    section = tex.split(r"\section{Foundational Principle}", 1)[1]
+    assert f"({foundational})" in section  # citation is always kept
+    assert (f"[[scripture:{foundational}|" in section) is repeated
+

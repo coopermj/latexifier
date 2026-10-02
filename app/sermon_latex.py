@@ -9,7 +9,7 @@ from .slides import SlideAnalysis, SlideItem, asset_name
 from .commentary import CommentarySource, fetch_commentary_for_reference, CommentaryResult
 from .scripture import fetch_scripture, ScriptureVersion, ScriptureLookupOptions
 from .lsj import get_lsj_entry
-from .interlinear import get_passage_words, is_nt_passage
+from .interlinear import _parse_multi_chap_ref, _parse_ref, get_passage_words, is_nt_passage
 from .hebrew_interlinear import get_hebrew_passage_words
 from .hebrew_rendering import interlinear_label, render_hebrew_interlinear, render_hebrew_lexicon
 
@@ -110,6 +110,28 @@ def scripture_placeholder(reference: str, version: str, nolinks: bool = False, s
     if strongs_overlay:
         return f"[[scripture:{reference}|{version}|strongs_overlay=true]]"
     return f"[[scripture:{reference}|{version}]]"
+
+
+def _passage_span(reference: str) -> tuple[str, tuple[int, int], tuple[int, int]] | None:
+    """Return (book, (chapter, verse) start, (chapter, verse) end) for a reference."""
+    ref = reference.replace("\u2013", "-").replace("\u2014", "-").strip()
+    multi = _parse_multi_chap_ref(ref)
+    if multi:
+        book, c1, v1, c2, v2 = multi
+        return book.casefold(), (c1, v1), (c2, v2)
+    parsed = _parse_ref(ref)
+    if not parsed:
+        return None
+    book, chapter, v_start, v_end = parsed
+    c = int(chapter)
+    return book.casefold(), (c, v_start or 1), (c, v_end or 999)
+
+
+def _within_passage(reference: str, passage: str) -> bool:
+    """True if every verse of reference is inside passage (same book)."""
+    inner, outer = _passage_span(reference), _passage_span(passage)
+    return bool(inner and outer and inner[0] == outer[0]
+                and outer[1] <= inner[1] and inner[2] <= outer[2])
 
 
 def _render_table(table: Table) -> list[str]:
@@ -633,8 +655,12 @@ async def generate_sermon_latex(
             lines.append(principle_text)
         lines.append("")
 
-        # Include foundational scripture text
-        if outline.foundational_scripture:
+        # Include foundational scripture text, unless it is already shown as
+        # part of the main passage at the front of the document.
+        main_passage_shown = include_main_passage and bool(main_passage)
+        if outline.foundational_scripture and not (
+            main_passage_shown and _within_passage(outline.foundational_scripture, main_passage)
+        ):
             lines.append(scripture_placeholder(outline.foundational_scripture, scripture_version))
             lines.append("")
 

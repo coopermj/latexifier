@@ -90,7 +90,7 @@ Return ONLY valid JSON matching this exact structure:
   },
   "main_passage": "string (e.g., 'James 3:1-12')",
   "foundational_principle": "string or null",
-  "foundational_scripture": "string or null (scripture ref for foundational principle)",
+  "foundational_scripture": "string or null (ONLY a reference the notes explicitly attach to the foundational principle; null if none — never copy main_passage here)",
   "points": [
     {
       "number": 1,
