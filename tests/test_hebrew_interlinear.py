@@ -45,7 +45,13 @@ def test_chapter_and_cross_chapter_ranges(hebrew):
     assert list(dict.fromkeys((w['chapter'], w['verse']) for w in words)) == [(1, 31), (2, 1), (2, 2), (2, 3)]
 
 
-@pytest.mark.parametrize('reference', ['John 1:1', 'Genesis 1:31-32', 'Genesis 1:32-2:1', 'Genesis 1:3-2', 'Genesis 2:1-1:3', 'Genesis 0:1', 'Genesis 51', 'Genesis 1:0', 'Genesis 1:1-999999999', 'Genesis 1:1-999999999:1', '../Gen 1:1', '', 'Genesis 1:1,3'])
+@pytest.mark.parametrize('reference', ['Isaiah 3-4', 'Isaiah 3–4'])
+def test_whole_chapter_range_matches_explicit_range(hebrew, reference):
+    # Sermon notes often name a passage as whole chapters ("Isaiah 3-4").
+    assert hebrew.get_hebrew_passage_words(reference) == hebrew.get_hebrew_passage_words('Isaiah 3:1-4:6')
+
+
+@pytest.mark.parametrize('reference', ['John 1:1', 'Genesis 1:31-32', 'Genesis 1:32-2:1', 'Genesis 1:3-2', 'Genesis 2:1-1:3', 'Genesis 0:1', 'Genesis 51', 'Genesis 1:0', 'Genesis 1:1-999999999', 'Genesis 1:1-999999999:1', '../Gen 1:1', '', 'Genesis 1:1,3', 'Genesis 2-1', 'Genesis 50-51'])
 def test_invalid_and_partial_ranges_return_none(hebrew, reference):
     assert hebrew.get_hebrew_passage_words(reference) is None
 

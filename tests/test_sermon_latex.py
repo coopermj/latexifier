@@ -245,3 +245,14 @@ async def test_standalone_statements_render_as_callouts_in_place():
     assert questions.index(r"\end{enumerate}") < questions.index("We face two options.")
     idols = tex.split(r"\section{Discarding our Idols}", 1)[1]
     assert idols.index("Worthless.") < idols.index("Our confession of need")
+
+
+@pytest.mark.parametrize('reference,passage,inside', [
+    ('Isaiah 4:2', 'Isaiah 3-4', True),
+    ('Isaiah 3-4', 'Isaiah 3–4', True),
+    ('Isaiah 5:1', 'Isaiah 3-4', False),
+    ('Romans 2:1', 'Romans 1–2', True),
+])
+def test_within_passage_understands_chapter_ranges(reference, passage, inside):
+    from app.sermon_latex import _within_passage
+    assert _within_passage(reference, passage) is inside

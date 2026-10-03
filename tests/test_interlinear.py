@@ -62,3 +62,21 @@ def test_get_passage_words_missing_reference_returns_none():
     with patch("app.interlinear._load_berean", return_value=SAMPLE_BEREAN):
         result = get_passage_words("Ephesians 99:1")
     assert result is None
+
+
+@pytest.mark.parametrize("reference", ["Romans 1-2", "Romans 1–2"])
+def test_whole_chapter_range_matches_explicit_range(reference):
+    from app.interlinear import get_passage_words, is_nt_passage
+    assert is_nt_passage(reference)
+    assert get_passage_words(reference) == get_passage_words("Romans 1:1-2:29")
+
+
+def test_en_dash_verse_range():
+    from app.interlinear import get_passage_words
+    assert get_passage_words("Romans 1:1–7") == get_passage_words("Romans 1:1-7")
+
+
+@pytest.mark.parametrize("reference", ["Romans 2-1", "Romans 16-17", "Isaiah 3-4"])
+def test_invalid_or_non_nt_chapter_ranges_return_none(reference):
+    from app.interlinear import get_passage_words
+    assert get_passage_words(reference) is None

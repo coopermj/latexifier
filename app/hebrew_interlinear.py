@@ -27,7 +27,8 @@ _ALIASES = {name.lower(): code for name, code in BOOK_CODES.items()}
 _ALIASES.update({code.lower(): code for code in BOOK_CODES.values()})
 _ALIASES.update({'psalm': 'Psa', 'ps': 'Psa', 'song of songs': 'Sng', 'song': 'Sng',
                  'canticles': 'Sng', 'ezek': 'Ezk', 'joel': 'Jol', 'nah': 'Nam'})
-_REF_RE = re.compile(r'^(.+?)\s+(\d+)(?::(\d+)(?:-(?:(\d+):)?(\d+))?)?$')
+# Book Chapter[:Verse[-[Chapter:]Verse]] or a whole-chapter range, Book Chapter-Chapter.
+_REF_RE = re.compile(r'^(.+?)\s+(\d+)(?::(\d+)(?:-(?:(\d+):)?(\d+))?|-(\d+))?$')
 _STRONG_RE = re.compile(r'^[Hh](\d{1,4})([A-Za-z]*)$')
 
 
@@ -116,7 +117,8 @@ def get_hebrew_passage_words(reference: str) -> list[dict] | None:
     match = _REF_RE.fullmatch(ref)
     if not match:
         return None
-    book, c_start, v_start, c_end, v_end = match.groups()
+    book, c_start, v_start, c_end, v_end, chapter_range_end = match.groups()
+    c_end = c_end or chapter_range_end
     code = _ALIASES.get(' '.join(book.lower().replace('.', '').split()))
     if code is None:
         return None

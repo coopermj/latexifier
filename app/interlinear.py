@@ -22,6 +22,14 @@ _REF_RE = re.compile(r'^(.+?)\s+(\d+):(\d+)(?:-(\d+))?$')
 _MULTI_CHAP_RE = re.compile(r'^(.+?)\s+(\d+):(\d+)-(\d+):(\d+)$')
 # Matches "Book Chapter" (no verse)
 _CHAP_RE = re.compile(r'^(.+?)\s+(\d+)$')
+# Matches "Book Chapter-Chapter" (whole-chapter range, e.g. "Romans 1-2")
+_CHAP_RANGE_RE = re.compile(r'^(.+?)\s+(\d+)-(\d+)$')
+# Verse number meaning "through the end of the chapter" for whole-chapter ranges
+_CHAPTER_END = 999
+
+
+def _normalize(reference: str) -> str:
+    return reference.replace("\u2013", "-").replace("\u2014", "-").strip()
 
 _BEREAN_PATH = Path(__file__).parent.parent / "data" / "berean_nt.json"
 
@@ -35,9 +43,9 @@ def _load_berean() -> dict:
 
 def _parse_ref(reference: str) -> tuple[str, str, int | None, int | None] | None:
     """Return (book, chapter_str, v_start, v_end) or None if unparseable. Single-chapter only."""
-    ref = reference.strip()
+    ref = _normalize(reference)
     # Skip cross-chapter refs — handled separately
-    if _MULTI_CHAP_RE.match(ref):
+    if _MULTI_CHAP_RE.match(ref) or _CHAP_RANGE_RE.match(ref):
         return None
     m = _REF_RE.match(ref)
     if m:
@@ -49,11 +57,18 @@ def _parse_ref(reference: str) -> tuple[str, str, int | None, int | None] | None
 
 
 def _parse_multi_chap_ref(reference: str) -> tuple[str, int, int, int, int] | None:
-    """Return (book, ch_start, v_start, ch_end, v_end) for cross-chapter refs, or None."""
-    m = _MULTI_CHAP_RE.match(reference.strip())
-    if not m:
-        return None
-    return m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5))
+    """Return (book, ch_start, v_start, ch_end, v_end) for cross-chapter refs, or None.
+
+    A whole-chapter range ("Romans 1-2") runs from verse 1 to _CHAPTER_END.
+    """
+    ref = _normalize(reference)
+    m = _MULTI_CHAP_RE.match(ref)
+    if m:
+        return m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5))
+    m = _CHAP_RANGE_RE.match(ref)
+    if m:
+        return m.group(1), int(m.group(2)), 1, int(m.group(3)), _CHAPTER_END
+    return None
 
 
 def is_nt_passage(reference: str) -> bool:
@@ -70,8 +85,9 @@ def get_passage_words(reference: str) -> list[dict] | None:
     Return word list for a NT reference, or None for OT/unknown/missing data.
 
     Each dict has keys: greek, lemma, strongs, gloss, morph, verse (int).
-    Accepts verse-level ("Titus 2:11-15"), chapter-level ("Titus 3"), and
-    cross-chapter ranges ("Acts 15:36-16:5").
+    Accepts verse-level ("Titus 2:11-15"), chapter-level ("Titus 3"),
+    cross-chapter ranges ("Acts 15:36-16:5"), and whole-chapter ranges
+    ("Romans 1-2").
     """
     data = _load_berean()
 
@@ -82,9 +98,14 @@ def get_passage_words(reference: str) -> list[dict] | None:
         if book not in _NT_BOOKS:
             return None
         book_data = data.get(book, {})
+        if ch_end < ch_start:
+            logger.warning("get_passage_words: inverted chapter range in %r", reference)
+            return None
         words: list[dict] = []
         for ch in range(ch_start, ch_end + 1):
             ch_data = book_data.get(str(ch), {})
+            if not ch_data:
+                return None  # chapter missing: don't return a partial passage
             start_v = v_start if ch == ch_start else 1
             end_v = v_end if ch == ch_end else max(int(k) for k in ch_data) if ch_data else 0
             for v in range(start_v, end_v + 1):
