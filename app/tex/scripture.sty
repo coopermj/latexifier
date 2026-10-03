@@ -3454,6 +3454,9 @@
         \l__scripture_poetry_leftmargin_tl -
         \l__scripture_poetry_chap_indent_dim
       }
+    % LOCAL PATCH (2026-10-02): a wrapped first poetry line sits beside the
+    % two-line drop chapter number, so indent it at least as far as the first
+    % line. Otherwise a wide number (Psalm 118) overlaps the wrapped text.
     \parshape 2 ~
       \dim_eval:n
         {
@@ -3462,9 +3465,19 @@
       \dim_eval:n
         { \linewidth - \l__scripture_poetry_chap_parshape_correction_dim } ~
       \dim_eval:n
-        { \@totalleftmargin + \l__scripture_poetry_big_indent_tl } ~
+        {
+          \@totalleftmargin +
+          \dim_max:nn
+            { \l__scripture_poetry_big_indent_tl }
+            { \l__scripture_poetry_chap_parshape_correction_dim }
+        } ~
       \dim_eval:n
-        { \linewidth - \l__scripture_poetry_big_indent_tl }
+        {
+          \linewidth -
+          \dim_max:nn
+            { \l__scripture_poetry_big_indent_tl }
+            { \l__scripture_poetry_chap_parshape_correction_dim }
+        }
     \dim_compare:nNnT
       { \g__scripture_chap_width_dim + \l__scripture_poetry_chap_sep_dim }
       >

@@ -10,7 +10,9 @@ that source independently (along with the existing sermon fonts).
   <https://mirrors.ctan.org/macros/latex/contrib/scripture.zip> on 2026-09-13.
   Upstream sources, installer and license notice are in `upstream/`.
   Generated with `tex scripture.ins`; `upstream/scripture-local.patch` retains
-  Geneva's vertical-mode verse-mark penalty. This is a locally modified copy.
+  Geneva's vertical-mode verse-mark penalty and indents a wrapped first poetry
+  line past a wide drop chapter number (e.g. Psalm 118). This is a locally
+  modified copy.
   To regenerate, run the installer in `upstream/`, apply the patch there,
   then replace the runtime copy. Do not replace it with an unpatched release.
 - `verse_protrusion.tex`: from `geneve_1564` at `cf87dfd`, adapted to detect
